@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Supervisor } from "./supervisor/supervisor";
 import { Executor } from "./supervisor/executor";
 import { CapabilityRegistry } from "./capabilities/registry";
