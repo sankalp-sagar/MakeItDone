@@ -1,5 +1,3 @@
-// src/supervisor/state.ts
-
 export type TaskStatus =
   | "planning"
   | "executing"
@@ -10,13 +8,16 @@ export type TaskStatus =
 
 export interface Observation {
   id: string;
+  type: "information" | "result" | "error";
   message: string;
+  data?: unknown;
 }
 
 export interface PlanStep {
   id: string;
   title: string;
   capabilityId?: string;
+  input?: Record<string, unknown>;
   completed: boolean;
 }
 
@@ -26,8 +27,10 @@ export interface TaskState {
   status: TaskStatus;
 
   observations: Observation[];
+
   plan: PlanStep[];
 
   pendingQuestions: string[];
+
   completedSteps: string[];
 }

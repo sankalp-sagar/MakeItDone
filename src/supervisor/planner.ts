@@ -10,19 +10,30 @@ export class Planner {
       },
       {
         id: "2",
-        title: "Discover required information",
-        capabilityId: "inspect_directory",
+        title:
+          "Discover available files",
+        capabilityId:
+          "inspect_directory",
+        input: {
+          path: ".",
+        },
         completed: false,
       },
       {
         id: "3",
-        title: "Execute the solution safely",
-        capabilityId: "read_file",
+        title:
+          "Read the project README",
+        capabilityId:
+          "read_file",
+        input: {
+          path: "./README.md",
+        },
         completed: false,
       },
       {
         id: "4",
-        title: "Verify the result",
+        title:
+          "Verify the result",
         completed: false,
       },
     ];

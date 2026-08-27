@@ -54,6 +54,7 @@ export class Supervisor {
 
       state.observations.push({
         id: crypto.randomUUID(),
+        type: "information",
         message:
           `Completed reasoning step: ${nextStep.title}`,
       });
@@ -66,9 +67,8 @@ export class Supervisor {
         capabilityId:
           nextStep.capabilityId,
 
-        input: {
-          path: ".",
-        },
+        input:
+          nextStep.input ?? {},
       });
 
     console.log(
@@ -98,8 +98,9 @@ export class Supervisor {
 
       state.observations.push({
         id: crypto.randomUUID(),
-        message:
-          result.message,
+        type: "error",
+        message: result.message,
+        data: result.data,
       });
 
       return state;
@@ -113,21 +114,10 @@ export class Supervisor {
 
     state.observations.push({
       id: crypto.randomUUID(),
-      message:
-        result.message,
+      type: "result",
+      message: result.message,
+      data: result.data,
     });
-
-    if (result.data) {
-      state.observations.push({
-        id: crypto.randomUUID(),
-        message:
-          JSON.stringify(
-            result.data,
-            null,
-            2
-          ),
-      });
-    }
 
     return state;
   }
