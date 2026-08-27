@@ -1,15 +1,16 @@
-// src/index.ts
-
 import { Supervisor } from "./supervisor/supervisor";
+import { Executor } from "./supervisor/executor";
 import { CapabilityRegistry } from "./capabilities/registry";
 import { RiskEngine } from "./safety/risk-engine";
 
-const registry = new CapabilityRegistry();
+const registry =
+  new CapabilityRegistry();
 
 registry.register({
   id: "read_file",
   name: "Read File",
-  description: "Read the contents of a file.",
+  description:
+    "Read the contents of a file.",
   category: "observation",
   risk: "none",
   reversible: true,
@@ -19,7 +20,8 @@ registry.register({
 registry.register({
   id: "inspect_directory",
   name: "Inspect Directory",
-  description: "List files and directories available in a location.",
+  description:
+    "List files and directories available in a location.",
   category: "observation",
   risk: "none",
   reversible: true,
@@ -29,7 +31,8 @@ registry.register({
 registry.register({
   id: "run_python",
   name: "Run Python",
-  description: "Execute Python code in an isolated environment.",
+  description:
+    "Execute Python code in an isolated environment.",
   category: "execution",
   risk: "low",
   reversible: true,
@@ -39,7 +42,8 @@ registry.register({
 registry.register({
   id: "modify_file",
   name: "Modify File",
-  description: "Create or modify a file.",
+  description:
+    "Create or modify a file.",
   category: "execution",
   risk: "medium",
   reversible: true,
@@ -49,38 +53,58 @@ registry.register({
 registry.register({
   id: "delete_file",
   name: "Delete File",
-  description: "Delete a file from the filesystem.",
+  description:
+    "Delete a file from the filesystem.",
   category: "execution",
   risk: "high",
   reversible: false,
   requiresApproval: true,
 });
 
-const supervisor = new Supervisor();
+const riskEngine =
+  new RiskEngine();
 
-const task = supervisor.startTask(
-  "Make a passport photo from this image"
+const executor =
+  new Executor(
+    registry,
+    riskEngine
+  );
+
+const supervisor =
+  new Supervisor(
+    executor
+  );
+
+const task =
+  supervisor.startTask(
+    "Make a passport photo from this image"
+  );
+
+console.log(
+  "\nINITIAL TASK:"
 );
 
-console.log("TASK:");
-console.log(task);
+console.dir(task, {
+  depth: null,
+});
 
-console.log("\nAVAILABLE CAPABILITIES:");
+console.log(
+  "\nRUNNING AGENT:"
+);
 
-for (const capability of registry.getAll()) {
-  console.log(
-    `- ${capability.name} (${capability.risk} risk)`
-  );
+async function main() {
+  while (task.status === "executing") {
+    await supervisor.executeNextStep(task);
+  }
+
+  console.log("\nFINAL STATE:");
+
+  console.dir(task, {
+    depth: null,
+  });
 }
 
-const riskEngine = new RiskEngine();
-
-console.log("\nRISK EVALUATION:");
-
-for (const capability of registry.getAll()) {
-  const evaluation = riskEngine.evaluate(capability);
-
-  console.log(
-    `- ${capability.name}: ${evaluation.decision} — ${evaluation.reason}`
-  );
-}
+main().catch((error) => {
+  console.error("Agent failed:", error);
+  process.exit(1);
+});

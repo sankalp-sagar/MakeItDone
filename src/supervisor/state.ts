@@ -16,6 +16,7 @@ export interface Observation {
 export interface PlanStep {
   id: string;
   title: string;
+  capabilityId?: string;
   completed: boolean;
 }
 
