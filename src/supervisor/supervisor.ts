@@ -1,31 +1,70 @@
 import { Planner } from "./planner";
-import { Executor } from "./executor";
-import { TaskState } from "./state";
+
+import {
+  Executor,
+} from "./executor";
+
+import {
+  TaskState,
+  Artifact,
+} from "./state";
+
+import {
+  CapabilityRegistry,
+} from "../capabilities/registry";
 
 export class Supervisor {
-  private planner = new Planner();
+  private planner =
+    new Planner();
 
   constructor(
-    private executor: Executor
+    private executor: Executor,
+    private registry: CapabilityRegistry
   ) {}
 
-  startTask(goal: string): TaskState {
+  async startTask(
+    goal: string,
+    artifacts: Artifact[] = []
+  ): Promise<TaskState> {
     const state: TaskState = {
       id: crypto.randomUUID(),
+
       goal,
+
       status: "planning",
+
       observations: [],
+
+      artifacts,
+
       plan: [],
+
       pendingQuestions: [],
+
       completedSteps: [],
     };
 
-    state.plan =
-      this.planner.createPlan(goal);
+    await this.createPlan(state);
 
-    state.status = "executing";
+    state.status =
+      "executing";
 
     return state;
+  }
+
+  private async createPlan(
+    state: TaskState
+  ): Promise<void> {
+    const capabilities =
+      this.registry.getAll();
+
+    state.plan =
+      await this.planner.createPlan(
+        state.goal,
+        capabilities,
+        state.artifacts,
+        state.observations
+      );
   }
 
   async executeNextStep(
@@ -33,11 +72,14 @@ export class Supervisor {
   ): Promise<TaskState> {
     const nextStep =
       state.plan.find(
-        (step) => !step.completed
+        (step) =>
+          !step.completed
       );
 
     if (!nextStep) {
-      state.status = "completed";
+      state.status =
+        "completed";
+
       return state;
     }
 
@@ -46,7 +88,8 @@ export class Supervisor {
     );
 
     if (!nextStep.capabilityId) {
-      nextStep.completed = true;
+      nextStep.completed =
+        true;
 
       state.completedSteps.push(
         nextStep.id
@@ -54,7 +97,9 @@ export class Supervisor {
 
       state.observations.push({
         id: crypto.randomUUID(),
+
         type: "information",
+
         message:
           `Completed reasoning step: ${nextStep.title}`,
       });
@@ -94,19 +139,26 @@ export class Supervisor {
       result.decision === "denied" ||
       result.decision === "failed"
     ) {
-      state.status = "failed";
+      state.status =
+        "failed";
 
       state.observations.push({
         id: crypto.randomUUID(),
+
         type: "error",
-        message: result.message,
-        data: result.data,
+
+        message:
+          result.message,
+
+        data:
+          result.data,
       });
 
       return state;
     }
 
-    nextStep.completed = true;
+    nextStep.completed =
+      true;
 
     state.completedSteps.push(
       nextStep.id
@@ -114,9 +166,14 @@ export class Supervisor {
 
     state.observations.push({
       id: crypto.randomUUID(),
+
       type: "result",
-      message: result.message,
-      data: result.data,
+
+      message:
+        result.message,
+
+      data:
+        result.data,
     });
 
     return state;

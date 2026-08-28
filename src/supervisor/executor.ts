@@ -83,12 +83,12 @@ export class Executor {
         return this.readFile(input);
 
       case "run_python":
-        return {
-          success: true,
-          decision: "executed",
-          message:
-            "Python execution is not implemented yet.",
-        };
+      return {
+        success: false,
+        decision: "failed",
+        message:
+          "Python execution is not implemented yet.",
+      };
 
       default:
         return {
