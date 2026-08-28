@@ -6,30 +6,30 @@ import {
 
 import {
   Artifact,
-  Observation,
   PlanStep,
 } from "./state";
+
+interface LLMPlanStep {
+  id: string;
+
+  title: string;
+
+  capabilityId?: string;
+
+  input?: Record<string, unknown>;
+}
 
 interface LLMPlan {
   reasoning: string;
 
-  steps: Array<{
-    id: string;
-
-    title: string;
-
-    capabilityId?: string;
-
-    input?: Record<string, unknown>;
-  }>;
+  steps: LLMPlanStep[];
 }
 
 export class Planner {
   async createPlan(
     goal: string,
     capabilities: Capability[],
-    artifacts: Artifact[] = [],
-    observations: Observation[] = []
+    artifacts: Artifact[] = []
   ): Promise<PlanStep[]> {
     const capabilityDescription =
       capabilities
@@ -55,37 +55,18 @@ export class Planner {
             )
             .join("\n");
 
-    const observationDescription =
-      observations.length === 0
-        ? "No previous observations."
-        : observations
-            .map(
-              (observation) =>
-                `- ${observation.type}: ${observation.message}` +
-                (observation.data !== undefined
-                  ? `\n  data: ${JSON.stringify(
-                      observation.data
-                    )}`
-                  : "")
-            )
-            .join("\n");
-
     const systemPrompt = `
-You are the planner inside a general-purpose autonomous AI agent.
+You are the planning brain of a general-purpose AI agent.
 
-Your job is to decide what the agent should do next.
+Your job is to create a plan for the user's goal.
 
-You are NOT an executor.
+You DO NOT execute anything.
 
-You must NEVER execute a capability yourself.
+You DO NOT use tool-call syntax.
 
-You must NEVER emit tool-call syntax.
+You DO NOT output <tool_call> tags.
 
-You must NEVER output <tool_call> tags.
-
-You must return ONLY valid JSON.
-
-The application will execute the plan after you respond.
+You ONLY return JSON.
 
 USER GOAL:
 
@@ -95,35 +76,31 @@ USER-PROVIDED ARTIFACTS:
 
 ${artifactDescription}
 
-PREVIOUS OBSERVATIONS:
-
-${observationDescription}
-
 AVAILABLE CAPABILITIES:
 
 ${capabilityDescription}
 
 PLANNING RULES:
 
-1. Only select capabilities from the AVAILABLE CAPABILITIES list.
-2. Never invent a capability.
+1. Only use capabilities listed above.
+2. Never invent capabilities.
 3. User-provided artifacts are already available to the agent.
-4. If a user-provided artifact satisfies the required input, use that artifact directly.
-5. Do NOT inspect the current directory merely to discover a file that is already listed as a user-provided artifact.
-6. Do not assume that a file exists unless it is listed as an artifact or observed.
+4. If a suitable user artifact exists, use it directly.
+5. Do not inspect the filesystem merely to find an artifact that is already provided.
+6. Do not invent missing information.
 7. Use observation capabilities when information is genuinely missing.
-8. Prefer the smallest useful next step.
-9. Do not generate a complete speculative workflow when the result of an earlier step could change what should happen next.
-10. Never claim that an action has already been executed.
-11. Destructive or risky capabilities may be selected when appropriate, but the application's safety layer controls whether they can actually execute.
-12. If the goal cannot currently be completed, create the safest useful next step.
-13. If required information must come from the user and no suitable capability exists, return an empty steps array.
-14. Every capability step must contain capabilityId.
-15. Return JSON only.
-16. Do not wrap the JSON in Markdown.
+8. Prefer small, useful steps.
+9. Every capability step must include capabilityId.
+10. Include required inputs.
+11. Use artifact paths instead of binary file contents.
+12. The plan must actually move toward the user's goal.
+13. Do not claim an action has already been completed.
+14. Do not declare the goal complete merely because an observation was performed.
+15. Return ONLY valid JSON.
+16. Do not use Markdown.
 17. Do not write anything before or after the JSON.
 
-Return exactly this structure:
+Return exactly:
 
 {
   "reasoning": "short explanation",
@@ -139,15 +116,13 @@ Return exactly this structure:
 `;
 
     const userPrompt = `
-Determine the next useful action for this task.
+Determine the best next executable step for this goal.
 
-Goal:
-${goal}
+The user has already provided these artifacts:
 
-Remember:
-- User-provided artifacts are already available.
-- Previous observations are real information.
-- Do not blindly repeat actions whose information is already available.
+${artifactDescription}
+
+Do not search for an artifact that is already available.
 `;
 
     const response =

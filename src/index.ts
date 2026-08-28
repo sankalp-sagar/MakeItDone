@@ -30,7 +30,7 @@ async function main() {
     name: "Read File",
 
     description:
-      "Read the contents of a file.",
+      "Read the contents of a text file.",
 
     category: "observation",
 
@@ -64,7 +64,24 @@ async function main() {
     name: "Run Python",
 
     description:
-      "Execute Python code in an isolated environment.",
+      "Execute Python code.",
+
+    category: "execution",
+
+    risk: "low",
+
+    reversible: true,
+
+    requiresApproval: false,
+  });
+
+  registry.register({
+    id: "process_image",
+
+    name: "Process Image",
+
+    description:
+      "Transform an image file and produce a new image artifact.",
 
     category: "execution",
 

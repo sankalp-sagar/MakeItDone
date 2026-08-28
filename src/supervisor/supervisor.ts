@@ -44,17 +44,6 @@ export class Supervisor {
       completedSteps: [],
     };
 
-    await this.createPlan(state);
-
-    state.status =
-      "executing";
-
-    return state;
-  }
-
-  private async createPlan(
-    state: TaskState
-  ): Promise<void> {
     const capabilities =
       this.registry.getAll();
 
@@ -62,9 +51,13 @@ export class Supervisor {
       await this.planner.createPlan(
         state.goal,
         capabilities,
-        state.artifacts,
-        state.observations
+        state.artifacts
       );
+
+    state.status =
+      "executing";
+
+    return state;
   }
 
   async executeNextStep(
