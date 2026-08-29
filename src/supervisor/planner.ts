@@ -76,13 +76,11 @@ You are the planning brain of a general-purpose AI agent.
 
 Your job is to create a plan for the user's goal.
 
-You DO NOT execute anything.
-
-You DO NOT use tool-call syntax.
-
-You DO NOT output <tool_call> tags.
-
-You ONLY return JSON.
+DO NOT use any tool-call syntax.
+DO NOT output <tool_call> tags.
+DO NOT use function calling.
+YOU ONLY OUTPUT RAW JSON.
+NOTHING else. ONLY JSON.
 
 USER GOAL:
 
@@ -113,10 +111,8 @@ PLANNING RULES:
 13. Do not claim an action has already been completed.
 14. Do not declare the goal complete merely because an observation was performed.
 15. Return ONLY valid JSON.
-16. Do not use Markdown.
-17. Do not write anything before or after the JSON.
-
-Return exactly:
+16. No markdown. No text. No tool calls.
+17. Output exactly:
 
 {
   "reasoning": "short explanation",
@@ -129,6 +125,8 @@ Return exactly:
     }
   ]
 }
+
+START JSON RESPONSE NOW:
 `;
 
     const userPrompt = `
@@ -571,13 +569,17 @@ ${completedStepsDescription}
 
     const nextStep = parsed.nextStep;
 
-    if (
-      typeof nextStep.id !== "string"
-    ) {
+    if (!nextStep) {
       throw new Error(
-        "Next step has invalid id."
+        "Replan decision is 'next_step' but nextStep not provided."
       );
     }
+
+    // Auto-generate ID if missing
+    const stepId =
+      typeof nextStep.id === "string"
+        ? nextStep.id
+        : `step_${Date.now()}`;
 
     if (
       typeof nextStep.title !==
@@ -625,7 +627,7 @@ ${completedStepsDescription}
       decision,
       reasoning,
       nextStep: {
-        id: nextStep.id,
+        id: stepId,
         title: nextStep.title,
         capabilityId:
           nextStep.capabilityId,
@@ -633,6 +635,172 @@ ${completedStepsDescription}
           nextStep.input ?? {},
         completed: false,
       },
+    };
+  }
+
+  /**
+   * Verify that the user's goal has been achieved.
+   *
+   * This is distinct from "all plan steps completed."
+   * The LLM should evaluate whether the observations
+   * and artifacts actually satisfy the original goal.
+   */
+  async verifyGoal(
+    goal: string,
+    artifacts: Artifact[],
+    observations: Observation[]
+  ): Promise<{
+    goalAchieved: boolean;
+    reasoning: string;
+  }> {
+    const artifactDescription =
+      artifacts.length === 0
+        ? "No artifacts."
+        : artifacts
+            .map(
+              (artifact) =>
+                `- ${artifact.name} ` +
+                `(type: ${artifact.type}, ` +
+                `path: ${artifact.path ?? "unknown"})`
+            )
+            .join("\n");
+
+    const observationDescription =
+      observations.length === 0
+        ? "No observations."
+        : observations
+            .map(
+              (obs) =>
+                `[${obs.type}] ${obs.message}`
+            )
+            .join("\n");
+
+    const systemPrompt = `
+You are evaluating whether an AI agent has successfully completed a user's goal.
+
+USER'S GOAL:
+
+${goal}
+
+ARTIFACTS CREATED/AVAILABLE:
+
+${artifactDescription}
+
+OBSERVATIONS FROM EXECUTION:
+
+${observationDescription}
+
+YOUR TASK:
+
+Determine whether the user's goal has been achieved.
+
+DECISION RULES:
+
+1. Goal achieved = the observations and artifacts satisfy the original goal.
+2. Not achieved = more work is needed.
+3. Be strict: "created a file" ≠ "task complete" unless the file contents are verified.
+4. Look for evidence of success:
+   - Expected artifacts exist and are valid.
+   - Observations confirm the work was done correctly.
+   - No errors that prevent goal completion.
+5. Be skeptical of claims without evidence.
+6. Return ONLY valid JSON.
+7. No markdown, no text before/after.
+
+Return exactly:
+
+{
+  "goalAchieved": true or false,
+  "reasoning": "brief explanation"
+}
+`;
+
+    const userPrompt = `
+Based on the artifacts and observations, has the user's goal been achieved?
+
+Goal: ${goal}
+
+Artifacts: ${artifactDescription}
+
+Observations: ${observationDescription}
+`;
+
+    const response =
+      await llm.chat.completions.create({
+        model: "openrouter/free",
+
+        max_tokens: 800,
+
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt,
+          },
+          {
+            role: "user",
+            content: userPrompt,
+          },
+        ],
+      });
+
+    const content =
+      response.choices[0]?.message?.content;
+
+    if (!content) {
+      throw new Error(
+        "LLM returned empty goal verification response."
+      );
+    }
+
+    return this.parseGoalVerification(
+      content
+    );
+  }
+
+  private parseGoalVerification(
+    content: string
+  ): {
+    goalAchieved: boolean;
+    reasoning: string;
+  } {
+    const json =
+      this.extractJson(content);
+
+    let parsed: any;
+
+    try {
+      parsed =
+        JSON.parse(json);
+    } catch {
+      throw new Error(
+        `LLM returned invalid JSON in goal verification:\n${content}`
+      );
+    }
+
+    if (
+      typeof parsed.goalAchieved !==
+      "boolean"
+    ) {
+      throw new Error(
+        "Goal verification response does not contain a valid goalAchieved boolean."
+      );
+    }
+
+    if (
+      typeof parsed.reasoning !==
+      "string"
+    ) {
+      throw new Error(
+        "Goal verification response does not contain reasoning."
+      );
+    }
+
+    return {
+      goalAchieved:
+        parsed.goalAchieved,
+
+      reasoning:
+        parsed.reasoning,
     };
   }
 }

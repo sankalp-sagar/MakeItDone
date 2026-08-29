@@ -180,6 +180,20 @@ export class Supervisor {
         result.data,
     });
 
+    // If a new artifact was created,
+    // add it to the task state
+    if (result.artifact) {
+      state.artifacts.push(
+        result.artifact
+      );
+
+      console.log(
+        `\nArtifact added: ${
+          result.artifact.name
+        } (${result.artifact.type})`
+      );
+    }
+
     // After successful execution,
     // replan based on observations
     return this.replanAfterCompletion(
@@ -216,10 +230,11 @@ export class Supervisor {
       replanResult.decision ===
       "goal_complete"
     ) {
-      state.status =
-        "completed";
-
-      return state;
+      // Before marking as completed,
+      // verify the goal was actually achieved
+      return this.verifyGoalCompletion(
+        state
+      );
     }
 
     if (
@@ -268,5 +283,62 @@ export class Supervisor {
     });
 
     return state;
+  }
+
+  /**
+   * Verify that the goal has actually been achieved.
+   * This is a gate before marking task as completed.
+   */
+  private async verifyGoalCompletion(
+    state: TaskState
+  ): Promise<TaskState> {
+    console.log(
+      "\nVerifying goal completion..."
+    );
+
+    const verification =
+      await this.planner.verifyGoal(
+        state.goal,
+        state.artifacts,
+        state.observations
+      );
+
+    console.log(
+      "Goal verification result:",
+      verification.goalAchieved
+    );
+
+    state.observations.push({
+      id: crypto.randomUUID(),
+
+      type: "information",
+
+      message:
+        `Goal verification: ${
+          verification.goalAchieved
+            ? "ACHIEVED"
+            : "NOT ACHIEVED"
+        }`,
+
+      data: {
+        reasoning:
+          verification.reasoning,
+      },
+    });
+
+    if (
+      verification.goalAchieved
+    ) {
+      state.status =
+        "completed";
+
+      return state;
+    }
+
+    // Goal not achieved yet.
+    // Continue replanning to find next steps.
+    return this.replanAfterCompletion(
+      state
+    );
   }
 }

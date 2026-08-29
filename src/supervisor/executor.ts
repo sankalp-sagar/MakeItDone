@@ -1,6 +1,7 @@
 import { CapabilityRegistry } from "../capabilities/registry";
 import { Capability } from "../capabilities/types";
 import { RiskEngine } from "../safety/risk-engine";
+import { Artifact } from "./state";
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -25,6 +26,9 @@ export interface ExecutionResult {
   message: string;
 
   data?: unknown;
+
+  // Optional artifact created by this execution
+  artifact?: Artifact;
 }
 
 export class Executor {
@@ -671,6 +675,35 @@ export class Executor {
           absoluteOutputPath
         ).metadata();
 
+      const artifact: Artifact = {
+        id: crypto.randomUUID(),
+
+        name:
+          path.basename(
+            absoluteOutputPath
+          ),
+
+        type: "image",
+
+        path: outputPath,
+
+        source: "agent",
+
+        metadata: {
+          width:
+            outputMetadata.width,
+
+          height:
+            outputMetadata.height,
+
+          format:
+            outputMetadata.format,
+
+          size:
+            outputMetadata.size,
+        },
+      };
+
       return {
         success: true,
 
@@ -680,22 +713,10 @@ export class Executor {
         message:
           `Created image: ${outputPath}`,
 
+        artifact,
+
         data: {
-          artifact: {
-            name:
-              path.basename(
-                absoluteOutputPath
-              ),
-
-            type:
-              "image",
-
-            path:
-              outputPath,
-
-            source:
-              "agent",
-          },
+          artifact,
 
           metadata: {
             width:
