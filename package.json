@@ -4,7 +4,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "typecheck:build": "tsc --noEmit"
+    "typecheck:build": "tsc --noEmit",
+    "task": "npx tsx src/task-runner.ts"
   },
   "dependencies": {
     "@daytona/sdk": "^0.207.0",
