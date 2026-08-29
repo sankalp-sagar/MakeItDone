@@ -31,11 +31,64 @@ export class DelegationRouter {
   evaluate(
     context: DelegationContext
   ): DelegationDecision {
-    // TODO: Implement intelligent delegation logic.
-    // For now, all tasks are handled directly by supervisor.
+    const goal = context.goal.toLowerCase();
+    const hasImageWork =
+      goal.includes("image") ||
+      goal.includes("photo") ||
+      goal.includes("crop") ||
+      goal.includes("resize");
+    const hasDebugWork =
+      goal.includes("bug") ||
+      goal.includes("error") ||
+      goal.includes("fix") ||
+      goal.includes("debug") ||
+      goal.includes("fail");
+    const hasDataWork =
+      goal.includes("analy") ||
+      goal.includes("csv") ||
+      goal.includes("data") ||
+      goal.includes("report");
+    const hasWebWork =
+      goal.includes("search") ||
+      goal.includes("web") ||
+      goal.includes("research") ||
+      goal.includes("lookup");
+
+    if (hasImageWork) {
+      return {
+        shouldDelegate: true,
+        specialty: "image-processing",
+        reason: "Image transformation work maps to image-processing specialist.",
+      };
+    }
+
+    if (hasDebugWork) {
+      return {
+        shouldDelegate: true,
+        specialty: "debugging",
+        reason: "Error diagnosis and bug fixing map to debugging specialist.",
+      };
+    }
+
+    if (hasDataWork) {
+      return {
+        shouldDelegate: true,
+        specialty: "data-analysis",
+        reason: "Analysis and reporting map to data-analysis specialist.",
+      };
+    }
+
+    if (hasWebWork) {
+      return {
+        shouldDelegate: true,
+        specialty: "web-research",
+        reason: "Web lookup and research map to web-research specialist.",
+      };
+    }
+
     return {
       shouldDelegate: false,
-      reason: "Delegation not yet implemented",
+      reason: "Task fits direct supervisor handling.",
     };
   }
 }
