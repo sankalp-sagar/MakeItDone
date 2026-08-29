@@ -3,6 +3,7 @@ import { RiskEngine } from "./safety/risk-engine";
 import { Executor } from "./supervisor/executor";
 import { Supervisor } from "./supervisor/supervisor";
 import { Artifact, TaskState } from "./supervisor/state";
+import * as readline from "node:readline";
 
 export function parseTaskInput(argv: string[]): string {
   const args = argv.slice(2);
@@ -136,4 +137,18 @@ export async function runTaskFromGoal(
   }
 
   return task;
+}
+
+export async function promptForTask(): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question("Task: ", (answer) => {
+      rl.close();
+      resolve(answer.trim() || "Make a passport photo from this image");
+    });
+  });
 }

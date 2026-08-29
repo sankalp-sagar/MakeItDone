@@ -1,8 +1,10 @@
 import "dotenv/config";
 
-import { llm } from "./client";
+import { getLlmClient } from "./client";
 
 async function main() {
+  const llm = getLlmClient();
+
   const response = await llm.chat.completions.create({
     model: "openrouter/free",
     messages: [

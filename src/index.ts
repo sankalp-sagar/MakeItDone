@@ -1,11 +1,10 @@
 import "dotenv/config";
 
-import { runTaskFromGoal } from "./task-runner";
+import { parseTaskInput, promptForTask, runTaskFromGoal } from "./task-runner";
 
 async function main() {
-  const goal =
-    process.argv.slice(2).join(" ") ||
-    "Make a passport photo from this image";
+  const rawArgs = process.argv.slice(2);
+  const goal = rawArgs.length > 0 ? parseTaskInput(process.argv) : await promptForTask();
 
   const task = await runTaskFromGoal(goal, [
     {

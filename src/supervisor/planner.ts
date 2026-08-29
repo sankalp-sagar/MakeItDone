@@ -1,4 +1,4 @@
-import { llm } from "../llm/client";
+import { getLlmClient } from "../llm/client";
 
 import {
   Capability,
@@ -139,6 +139,8 @@ ${artifactDescription}
 
 Do not search for an artifact that is already available.
 `;
+
+    const llm = getLlmClient();
 
     const response =
       await llm.chat.completions.create({
@@ -509,6 +511,8 @@ Completed steps:
 ${completedStepsDescription}
 `;
 
+    const llm = getLlmClient();
+
     const response =
       await llm.chat.completions.create({
         model: "openrouter/free",
@@ -775,6 +779,8 @@ Artifacts: ${artifactDescription}
 
 Observations: ${observationDescription}
 `;
+
+    const llm = getLlmClient();
 
     const response =
       await llm.chat.completions.create({

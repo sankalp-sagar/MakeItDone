@@ -1,15 +1,17 @@
 import OpenAI from "openai";
 
-const apiKey = process.env.OPENROUTER_API_KEY;
+export function getLlmClient() {
+  const apiKey = process.env.OPENROUTER_API_KEY;
 
-if (!apiKey) {
-  throw new Error(
-    "OPENROUTER_API_KEY is not set."
-  );
+  if (!apiKey) {
+    throw new Error(
+      "OPENROUTER_API_KEY is not set."
+    );
+  }
+
+  return new OpenAI({
+    apiKey,
+    baseURL:
+      "https://openrouter.ai/api/v1",
+  });
 }
-
-export const llm = new OpenAI({
-  apiKey,
-  baseURL:
-    "https://openrouter.ai/api/v1",
-});
