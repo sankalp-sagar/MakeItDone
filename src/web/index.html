@@ -121,6 +121,24 @@
         min-height: 24px;
       }
 
+      .result-box {
+        display: none;
+        margin-top: 18px;
+      }
+
+      .result-box img {
+        max-width: 100%;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.08);
+      }
+
+      .download-link {
+        display: inline-block;
+        margin-top: 12px;
+        color: var(--primary);
+        text-decoration: none;
+      }
+
       pre {
         margin-top: 16px;
         white-space: pre-wrap;
@@ -153,6 +171,12 @@
 
         <div id="fileList" class="file-list"></div>
         <div id="status" class="status"></div>
+
+        <div id="resultBox" class="result-box">
+          <img id="resultImage" alt="Generated result" />
+          <div><a id="downloadLink" class="download-link" href="#">Download result</a></div>
+        </div>
+
         <pre id="output">Waiting for input...</pre>
       </div>
     </div>
@@ -164,6 +188,9 @@
       const fileList = document.getElementById('fileList');
       const statusEl = document.getElementById('status');
       const outputEl = document.getElementById('output');
+      const resultBox = document.getElementById('resultBox');
+      const resultImage = document.getElementById('resultImage');
+      const downloadLink = document.getElementById('downloadLink');
       const runBtn = document.getElementById('runBtn');
       const clearBtn = document.getElementById('clearBtn');
 
@@ -208,9 +235,22 @@
       clearBtn.addEventListener('click', () => {
         selectedFiles.length = 0;
         renderFiles();
+        resultBox.style.display = 'none';
         outputEl.textContent = 'Waiting for input...';
         statusEl.textContent = '';
       });
+
+      function setResultImage(path) {
+        if (!path) {
+          resultBox.style.display = 'none';
+          return;
+        }
+
+        resultBox.style.display = 'block';
+        resultImage.src = path;
+        downloadLink.href = path;
+        downloadLink.textContent = 'Download result';
+      }
 
       runBtn.addEventListener('click', async () => {
         const goal = taskInput.value.trim();
@@ -244,6 +284,14 @@
 
           const payload = await response.json();
           outputEl.textContent = JSON.stringify(payload, null, 2);
+
+          const imagePath = payload?.task?.artifacts?.find((artifact) => artifact.type === 'image')?.path;
+          if (imagePath) {
+            setResultImage('/files/' + encodeURIComponent(imagePath.split('/').pop() || 'result.jpg'));
+          } else {
+            setResultImage(null);
+          }
+
           statusEl.textContent = response.ok ? 'Task complete.' : 'Task failed.';
         } catch (error) {
           outputEl.textContent = String(error);

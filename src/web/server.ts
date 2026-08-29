@@ -33,6 +33,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname.startsWith("/files/")) {
+    const fileName = decodeURIComponent(url.pathname.replace("/files/", ""));
+    const filePath = path.join(process.cwd(), "uploads", fileName);
+    try {
+      const body = await fs.readFile(filePath);
+      res.writeHead(200, { "Content-Type": "image/jpeg" });
+      res.end(body);
+    } catch {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "File not found" }));
+    }
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/task") {
     let body = "";
     req.on("data", (chunk) => {
