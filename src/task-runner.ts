@@ -162,9 +162,9 @@ export async function runTaskFromGoal(
     name: "Modify File",
     description: "Create or modify a file.",
     category: "execution",
-    risk: "medium",
+    risk: "low",
     reversible: true,
-    requiresApproval: true,
+    requiresApproval: false,
   });
 
   registry.register({

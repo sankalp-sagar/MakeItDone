@@ -394,7 +394,10 @@
         } else {
           msg += 'Task complete. ';
           if (task.observations && task.observations.length > 0) {
-            const steps = task.observations.map((o) => o.message || o.type).filter((s) => s);
+            const steps = task.observations
+              .filter((o) => o.type === 'result' || o.type === 'error')
+              .map((o) => o.message)
+              .filter((s) => s);
             if (steps.length > 0) {
               msg += 'What happened: ' + steps.join(' Then ') + '.';
             }

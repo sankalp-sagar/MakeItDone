@@ -79,6 +79,20 @@ export class RiskEngine {
       }
     }
 
+    if (
+      capability.id === "modify_file" &&
+      !normalized.includes(".env") &&
+      !normalized.includes("/etc/") &&
+      !normalized.includes("/var/www/") &&
+      !normalized.includes("production") &&
+      !normalized.includes("secrets")
+    ) {
+      return {
+        decision: "allow",
+        reason: `${capability.name} is safe to execute automatically for normal file targets.`,
+      };
+    }
+
     if (capability.risk === "medium") {
       return {
         decision: "approval_required",

@@ -64,6 +64,92 @@ describe("Supervisor", () => {
       expect(result.question).toContain("information");
     });
 
+    it("should treat greeting phrases as a user prompt, not a task", async () => {
+      const registry = {
+        getAll: () => [],
+      } as any;
+      const supervisor = new Supervisor({ execute: jest.fn() } as any, registry);
+
+      const state = await supervisor.startTask("hey there", []);
+
+      expect(state.status).toBe("waiting_for_user");
+      expect(state.pendingQuestions[0]).toContain("What would you like me to do");
+    });
+
+    it("should plan arithmetic tasks as executable Python", async () => {
+      const registry = {
+        getAll: () => [{ id: "run_python", description: "Execute Python code." }],
+      } as any;
+      const supervisor = new Supervisor({ execute: jest.fn() } as any, registry);
+
+      const state = await supervisor.startTask("sum 3 and 5", []);
+
+      expect(state.status).toBe("executing");
+      expect(state.plan).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            capabilityId: "run_python",
+            input: expect.objectContaining({
+              code: expect.stringContaining("print("),
+            }),
+          }),
+        ])
+      );
+    });
+
+    it("should auto-complete arithmetic tasks after a successful execution", async () => {
+      const registry = {
+        getAll: () => [{ id: "run_python", description: "Execute Python code." }],
+      } as any;
+      const executor = {
+        execute: jest.fn().mockResolvedValue({
+          success: true,
+          decision: "executed",
+          message: "Python code executed successfully.",
+          data: { stdout: "17\n", stderr: "", exitCode: 0 },
+        }),
+      } as any;
+      const supervisor = new Supervisor(executor, registry);
+      const state = {
+        id: "task-1",
+        goal: "can you add 5 and 12",
+        status: "executing",
+        observations: [],
+        artifacts: [],
+        plan: [{ id: "1", title: "Add 5 and 12", capabilityId: "run_python", input: { code: "print(5 + 12)" }, completed: false }],
+        pendingQuestions: [],
+        userResponses: [],
+        completedSteps: [],
+      } as any;
+
+      const next = await supervisor.executeNextStep(state);
+
+      expect(next.status).toBe("completed");
+      expect(next.observations.some((obs: any) => obs.message.includes("Result: 17"))).toBe(true);
+    });
+
+    it("should plan file creation tasks as modify_file", async () => {
+      const registry = {
+        getAll: () => [{ id: "modify_file", description: "Create or modify a file." }],
+      } as any;
+      const supervisor = new Supervisor({ execute: jest.fn() } as any, registry);
+
+      const state = await supervisor.startTask('create a hello.txt file saying "Yooo fuck it" in it', []);
+
+      expect(state.status).toBe("executing");
+      expect(state.plan).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            capabilityId: "modify_file",
+            input: expect.objectContaining({
+              path: "./hello.txt",
+              content: "Yooo fuck it",
+            }),
+          }),
+        ])
+      );
+    });
+
     it("should treat a resumed answer as the new task goal", async () => {
       const registry = {
         getAll: () => [],

@@ -49,8 +49,9 @@ export class Supervisor {
 
     // Detect vague goals and respond with greeting (no LLM cost)
     // Only true greetings, not conversational responses
-    const vaguePatterns = /^(hello|hi|hey|test)$/i;
-    if (vaguePatterns.test(goal.trim())) {
+    const greetingPattern = /^(?:hello|hi|hey)(?:\s+(?:there|there!|everyone|friend|guys))?\s*$/i;
+    const isGreeting = greetingPattern.test(goal.trim()) || /^test\s*$/i.test(goal.trim());
+    if (isGreeting) {
       state.status = "waiting_for_user";
       
       if (artifacts.length > 0) {
@@ -284,11 +285,60 @@ export class Supervisor {
       );
     }
 
+    if (this.shouldAutoComplete(state, result)) {
+      return state;
+    }
+
     // After successful execution,
     // replan based on observations
     return this.replanAfterCompletion(
       state
     );
+  }
+
+  private shouldAutoComplete(
+    state: TaskState,
+    result: { success: boolean; decision: string; data?: unknown; message: string }
+  ): boolean {
+    if (!result.success || result.decision !== "executed") {
+      return false;
+    }
+
+    const goal = state.goal || "";
+    const stdout =
+      typeof result.data === "object" && result.data !== null && "stdout" in result.data
+        ? String((result.data as { stdout?: string }).stdout ?? "")
+        : "";
+
+    const outputPath =
+      typeof result.data === "object" && result.data !== null && "path" in result.data
+        ? String((result.data as { path?: string }).path ?? "")
+        : "";
+
+    const simpleArithmetic = this.planner["extractArithmeticExpression"]?.(goal);
+    if (simpleArithmetic && stdout.trim()) {
+      state.status = "completed";
+      state.observations.push({
+        id: crypto.randomUUID(),
+        type: "result",
+        message: `Result: ${stdout.trim()}`,
+        data: { stdout: stdout.trim(), goal },
+      });
+      return true;
+    }
+
+    if ((goal.toLowerCase().includes("create") || goal.toLowerCase().includes("write") || goal.toLowerCase().includes("make")) && outputPath) {
+      state.status = "completed";
+      state.observations.push({
+        id: crypto.randomUUID(),
+        type: "result",
+        message: `Created file: ${outputPath}`,
+        data: { path: outputPath, goal },
+      });
+      return true;
+    }
+
+    return false;
   }
 
   /**

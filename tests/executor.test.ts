@@ -31,6 +31,52 @@ describe("Executor", () => {
     it("should handle execution errors", () => {
       // TODO: Implement
     });
+
+    it("should execute a simple python calculation", async () => {
+      const registry = new CapabilityRegistry();
+      registry.register({
+        id: "run_python",
+        name: "Run Python",
+        description: "Execute Python code.",
+        category: "execution",
+        risk: "low",
+        reversible: true,
+        requiresApproval: false,
+      });
+
+      const executor = new Executor(registry, new RiskEngine());
+      const result = await executor.execute({
+        capabilityId: "run_python",
+        input: { code: "print(5 + 3)" },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.decision).toBe("executed");
+      expect(result.data).toMatchObject({ stdout: "8\n" });
+    });
+
+    it("should create a file when planner-style file_path and content are provided", async () => {
+      const registry = new CapabilityRegistry();
+      registry.register({
+        id: "modify_file",
+        name: "Modify File",
+        description: "Create or modify a file.",
+        category: "execution",
+        risk: "low",
+        reversible: true,
+        requiresApproval: false,
+      });
+
+      const executor = new Executor(registry, new RiskEngine());
+      const result = await executor.execute({
+        capabilityId: "modify_file",
+        input: { file_path: "./output/regression-test.txt", content: "hello from regression test" },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.decision).toBe("executed");
+      expect(result.data).toMatchObject({ path: "./output/regression-test.txt" });
+    });
   });
 
   describe("capabilities", () => {

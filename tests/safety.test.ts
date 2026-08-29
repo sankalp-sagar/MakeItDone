@@ -54,6 +54,16 @@ describe("RiskEngine", () => {
       expect(result.decision).toBe("approval_required");
     });
 
+    it("should allow normal modify_file operations", () => {
+      const engine = new RiskEngine();
+      const result = engine.evaluate(
+        capability({ id: "modify_file", name: "Modify File", risk: "medium" }),
+        "/Users/test/project/hello.txt"
+      );
+
+      expect(result.decision).toBe("allow");
+    });
+
     it("should require approval for high-risk operations", () => {
       const engine = new RiskEngine();
       const result = engine.evaluate(

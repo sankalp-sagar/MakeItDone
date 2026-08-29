@@ -89,7 +89,30 @@ const server = http.createServer(async (req, res) => {
 
         let task: TaskState;
 
-        if (existingTask && existingTask.status === "waiting_for_user" && existingTask.pendingQuestions.length > 0) {
+        if (
+          sessionId &&
+          existingTask &&
+          existingTask.artifacts.length > 0 &&
+          /where\s+(is|are)\s+(it|the\s*file|that|this)/i.test(goal)
+        ) {
+          const latestArtifact = existingTask.artifacts[existingTask.artifacts.length - 1];
+          const location = latestArtifact.path || latestArtifact.name;
+          task = {
+            ...existingTask,
+            goal,
+            status: "completed",
+            pendingQuestions: [],
+            observations: [
+              ...(existingTask.observations ?? []),
+              {
+                id: crypto.randomUUID(),
+                type: "information",
+                message: `Last file created at: ${location}`,
+                data: { file: location },
+              },
+            ],
+          };
+        } else if (existingTask && existingTask.status === "waiting_for_user" && existingTask.pendingQuestions.length > 0) {
           // Resume existing task with user's answer
           const registry = new CapabilityRegistry();
           registry.register({
@@ -142,9 +165,9 @@ const server = http.createServer(async (req, res) => {
             name: "Modify File",
             description: "Create or modify a file.",
             category: "execution",
-            risk: "medium",
+            risk: "low",
             reversible: true,
-            requiresApproval: true,
+            requiresApproval: false,
           });
           registry.register({
             id: "delete_file",

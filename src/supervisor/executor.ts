@@ -5,6 +5,7 @@ import { Artifact } from "./state";
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 
 import sharp from "sharp";
 
@@ -783,18 +784,13 @@ export class Executor {
   private async runPython(
     input: Record<string, unknown>
   ): Promise<ExecutionResult> {
-    // Basic Python execution for image processing
-    // This is a simplified implementation that handles
-    // common image transformation patterns using Sharp
-    // instead of actually running Python code.
-
     const code =
       typeof input.code ===
         "string"
         ? input.code
         : "";
 
-    if (!code) {
+    if (!code.trim()) {
       return {
         success: false,
 
@@ -806,57 +802,53 @@ export class Executor {
     }
 
     try {
-      // Check if this is a passport photo transformation
-      if (
-        code.includes(
-          "passport"
-        ) ||
-        code.includes(
-          "600"
-        ) ||
-        code.includes(
-          "Photo"
-        )
-      ) {
-        // Extract input and output paths
-        const inputMatch =
-          code.match(
-            /(?:open|Image\.open)\(['"]([^'"]+)['"]\)/
-          );
+      const pythonBin =
+        process.env.PYTHON_BIN ||
+        (spawnSync("python3", ["--version"], { encoding: "utf8" }).status === 0
+          ? "python3"
+          : "python");
 
-        const outputMatch =
-          code.match(
-            /\.save\(['"]([^'"]+)['"]/
-          );
-
-        if (inputMatch && outputMatch) {
-          const inputPath =
-            inputMatch[1];
-
-          const outputPath =
-            outputMatch[1];
-
-          // Use process_image under the hood
-          return this.processImage({
-            source: inputPath,
-            output: outputPath,
-            operation:
-              "passport_photo",
-            width: 600,
-            height: 600,
-          });
+      const pythonResult = spawnSync(
+        pythonBin,
+        ["-c", code],
+        {
+          encoding: "utf8",
+          timeout: 10000,
+          maxBuffer: 10 * 1024 * 1024,
         }
+      );
+
+      const stdout = pythonResult.stdout ?? "";
+      const stderr = pythonResult.stderr ?? "";
+
+      if (pythonResult.error) {
+        return {
+          success: false,
+          decision: "failed",
+          message: `Python execution failed: ${pythonResult.error.message}`,
+          data: { stdout, stderr, error: pythonResult.error.message },
+        };
       }
 
-      // For other Python code, return an error for now
+      if (pythonResult.status !== 0) {
+        return {
+          success: false,
+          decision: "failed",
+          message:
+            `Python execution failed: ${stderr.trim() || "Unknown Python error"}`,
+          data: { stdout, stderr, exitCode: pythonResult.status },
+        };
+      }
+
       return {
-        success: false,
-
-        decision: "failed",
-
-        message:
-          "run_python: Complex Python execution not yet supported. " +
-          "Use built-in capabilities (process_image, etc.) instead.",
+        success: true,
+        decision: "executed",
+        message: "Python code executed successfully.",
+        data: {
+          stdout,
+          stderr,
+          exitCode: pythonResult.status,
+        },
       };
     } catch (error) {
       return {
@@ -958,7 +950,13 @@ export class Executor {
     const filePath =
       this.getFirstString(
         input,
-        ["path", "file", "target"]
+        [
+          "path",
+          "file_path",
+          "filePath",
+          "file",
+          "target",
+        ]
       );
 
     const content =

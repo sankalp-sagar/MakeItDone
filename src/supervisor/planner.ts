@@ -48,6 +48,11 @@ export class Planner {
     capabilities: Capability[],
     artifacts: Artifact[] = []
   ): Promise<PlanStep[]> {
+    const directPlan = this.buildDirectPlan(goal, artifacts, capabilities);
+    if (directPlan) {
+      return directPlan;
+    }
+
     const capabilityDescription =
       capabilities
         .map(
@@ -178,6 +183,126 @@ Do not search for an artifact that is already available.
     );
 
     return plan;
+  }
+
+  private buildDirectPlan(
+    goal: string,
+    artifacts: Artifact[] = [],
+    capabilities: Capability[] = []
+  ): PlanStep[] | null {
+    const createFilePlan = this.extractFileCreationPlan(goal);
+    if (createFilePlan) {
+      const hasModifyFile = capabilities.some((capability) => capability.id === "modify_file");
+      if (hasModifyFile) {
+        return createFilePlan;
+      }
+    }
+
+    const arithmeticExpression = this.extractArithmeticExpression(goal);
+    if (!arithmeticExpression) {
+      return null;
+    }
+
+    const hasPython = capabilities.some((capability) => capability.id === "run_python");
+    if (!hasPython) {
+      return null;
+    }
+
+    return [
+      {
+        id: "1",
+        title: "Calculate the requested arithmetic expression",
+        capabilityId: "run_python",
+        input: {
+          code: `print(${arithmeticExpression})`,
+        },
+        completed: false,
+      },
+    ];
+  }
+
+  private extractFileCreationPlan(goal: string): PlanStep[] | null {
+    const fileNameMatch = goal.match(/(?:create|make|write|save)\s+(?:a|an|the)?\s*([A-Za-z0-9_.\-/]+\.[A-Za-z0-9]+)\s*(?:file)?/i);
+    if (!fileNameMatch) {
+      return null;
+    }
+
+    const filePath = fileNameMatch[1].startsWith("./") || fileNameMatch[1].startsWith("/") ? fileNameMatch[1] : `./${fileNameMatch[1]}`;
+    const quotedTextMatch = goal.match(/(?:saying|with text|with content|containing|that says|text\s+['"])(.+?)(?:['"](?:\s+(?:in|into|it))?|$)/i);
+    const plainTextMatch = goal.match(/(?:saying|with text|with content|containing|that says)\s+(.+)$/i);
+    const rawContent = quotedTextMatch?.[1] ?? plainTextMatch?.[1] ?? "";
+    const cleanContent = rawContent
+      .replace(/^['"]|['"]$/g, "")
+      .replace(/\s+(?:in|into|it)\s*$/i, "")
+      .replace(/\s+[.?!]+$/g, "")
+      .replace(/\s+(?:in|into|it)$\s*/i, "")
+      .trim();
+
+    if (!cleanContent) {
+      return null;
+    }
+
+    return [
+      {
+        id: "1",
+        title: `Create ${filePath} with the specified content`,
+        capabilityId: "modify_file",
+        input: {
+          path: filePath,
+          content: cleanContent,
+        },
+        completed: false,
+      },
+    ];
+  }
+
+  private extractArithmeticExpression(goal: string): string | null {
+    const cleaned = goal
+      .replace(/\?$/i, "")
+      .replace(/^can you\s+/i, "")
+      .replace(/^could you\s+/i, "")
+      .replace(/^please\s+/i, "")
+      .replace(/^what is\s+/i, "")
+      .replace(/^what's\s+/i, "")
+      .replace(/^compute\s+/i, "")
+      .replace(/^calculate\s+/i, "")
+      .replace(/^add\s+/i, "")
+      .replace(/^sum\s+/i, "")
+      .replace(/^total\s+/i, "")
+      .trim()
+      .toLowerCase();
+
+    if (!cleaned) {
+      return null;
+    }
+
+    const normalized = cleaned
+      .replace(/\s+/g, " ")
+      .replace(/\bplus\b/g, "+")
+      .replace(/\bminus\b/g, "-")
+      .replace(/\bmultiplied by\b/g, "*")
+      .replace(/\btimes\b/g, "*")
+      .replace(/\bdivided by\b/g, "/")
+      .replace(/\binto\b/g, "")
+      .replace(/[×]/g, "*")
+      .replace(/[÷]/g, "/")
+      .replace(/\band\b/g, " ")
+      .trim();
+
+    if (!/^[0-9\s+\-*/().]+$/.test(normalized)) {
+      return null;
+    }
+
+    const numbers = normalized.match(/\d+(?:\.\d+)?/g) ?? [];
+    if (numbers.length < 2) {
+      return null;
+    }
+
+    if (!/[+\-*/]/.test(normalized)) {
+      return `${numbers[0]}+${numbers[1]}`;
+    }
+
+    return normalized;
   }
 
   private parsePlan(
