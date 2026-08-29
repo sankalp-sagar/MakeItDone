@@ -4,7 +4,9 @@
  * End-to-end task flows and cross-component interactions.
  */
 
-import { describe, it } from "@jest/globals";
+import { describe, expect, it } from "@jest/globals";
+
+import { buildMissingApiKeyMessage } from "../src/llm/client";
 
 // TODO: Import supervisor, capabilities, safety
 
@@ -17,6 +19,15 @@ describe("Integration Tests", () => {
       // 3. Executor runs process_image
       // 4. Output artifact created
       // 5. Verify result is valid image
+    });
+  });
+
+  describe("LLM config", () => {
+    it("should explain how to set the missing API key", () => {
+      const message = buildMissingApiKeyMessage();
+
+      expect(message).toContain("OPENROUTER_API_KEY");
+      expect(message).toContain(".env");
     });
   });
 
