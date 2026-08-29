@@ -59,6 +59,17 @@ async function main() {
   });
 
   registry.register({
+    id: "inspect_image",
+    name: "Inspect Image",
+    description:
+      "Get metadata about an image file (dimensions, format, colors).",
+    category: "observation",
+    risk: "none",
+    reversible: true,
+    requiresApproval: false,
+  });
+
+  registry.register({
     id: "run_python",
 
     name: "Run Python",

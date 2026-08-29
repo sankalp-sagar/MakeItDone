@@ -60,6 +60,10 @@ export class Supervisor {
     return state;
   }
 
+  /**
+   * Execute next step and then replan based on observation.
+   * This implements the adaptive loop.
+   */
   async executeNextStep(
     state: TaskState
   ): Promise<TaskState> {
@@ -70,10 +74,11 @@ export class Supervisor {
       );
 
     if (!nextStep) {
-      state.status =
-        "completed";
-
-      return state;
+      // No incomplete steps in current plan.
+      // Trigger replanning to decide what to do.
+      return this.replanAfterCompletion(
+        state
+      );
     }
 
     console.log(
@@ -81,6 +86,7 @@ export class Supervisor {
     );
 
     if (!nextStep.capabilityId) {
+      // Reasoning step (no capability execution)
       nextStep.completed =
         true;
 
@@ -97,9 +103,13 @@ export class Supervisor {
           `Completed reasoning step: ${nextStep.title}`,
       });
 
-      return state;
+      // Replan after this reasoning step
+      return this.replanAfterCompletion(
+        state
+      );
     }
 
+    // Execute the capability
     const result =
       await this.executor.execute({
         capabilityId:
@@ -150,6 +160,7 @@ export class Supervisor {
       return state;
     }
 
+    // Step executed successfully
     nextStep.completed =
       true;
 
@@ -167,6 +178,93 @@ export class Supervisor {
 
       data:
         result.data,
+    });
+
+    // After successful execution,
+    // replan based on observations
+    return this.replanAfterCompletion(
+      state
+    );
+  }
+
+  /**
+   * After a step completes, consult the LLM
+   * to determine what happens next.
+   */
+  private async replanAfterCompletion(
+    state: TaskState
+  ): Promise<TaskState> {
+    const capabilities =
+      this.registry.getAll();
+
+    const replanResult =
+      await this.planner.replan(
+        state.goal,
+        capabilities,
+        state.artifacts,
+        state.observations,
+        state.plan,
+        state.completedSteps
+      );
+
+    console.log(
+      "\nReplanning result:",
+      replanResult.decision
+    );
+
+    if (
+      replanResult.decision ===
+      "goal_complete"
+    ) {
+      state.status =
+        "completed";
+
+      return state;
+    }
+
+    if (
+      replanResult.decision ===
+      "ask_user"
+    ) {
+      state.status =
+        "waiting_for_user";
+
+      if (
+        replanResult.question
+      ) {
+        state.pendingQuestions.push(
+          replanResult.question
+        );
+      }
+
+      return state;
+    }
+
+    if (
+      replanResult.decision ===
+      "next_step" &&
+      replanResult.nextStep
+    ) {
+      // Add the new step to the plan
+      state.plan.push(
+        replanResult.nextStep
+      );
+
+      return state;
+    }
+
+    // Unexpected state
+    state.status = "failed";
+
+    state.observations.push({
+      id: crypto.randomUUID(),
+
+      type: "error",
+
+      message:
+        "Unexpected replanning result.",
+
+      data: replanResult,
     });
 
     return state;

@@ -7,6 +7,7 @@ import {
 import {
   Artifact,
   PlanStep,
+  Observation,
 } from "./state";
 
 interface LLMPlanStep {
@@ -23,6 +24,21 @@ interface LLMPlan {
   reasoning: string;
 
   steps: LLMPlanStep[];
+}
+
+export type ReplanDecision =
+  | "next_step"
+  | "goal_complete"
+  | "ask_user";
+
+export interface ReplanResult {
+  decision: ReplanDecision;
+
+  nextStep?: PlanStep;
+
+  question?: string;
+
+  reasoning: string;
 }
 
 export class Planner {
@@ -292,5 +308,331 @@ Do not search for an artifact that is already available.
         );
       }
     }
+  }
+
+  /**
+   * Replan based on observations from execution.
+   * Adaptive loop: after each step execution, ask the LLM what to do next.
+   */
+  async replan(
+    goal: string,
+    capabilities: Capability[],
+    artifacts: Artifact[],
+    observations: Observation[],
+    previousPlan: PlanStep[],
+    completedSteps: string[]
+  ): Promise<ReplanResult> {
+    const capabilityDescription =
+      capabilities
+        .map(
+          (capability) =>
+            `- ${capability.id}: ${capability.description} ` +
+            `(category: ${capability.category}, ` +
+            `risk: ${capability.risk}, ` +
+            `requiresApproval: ${capability.requiresApproval})`
+        )
+        .join("\n");
+
+    const artifactDescription =
+      artifacts.length === 0
+        ? "No artifacts are available."
+        : artifacts
+            .map(
+              (artifact) =>
+                `- ${artifact.name} ` +
+                `(type: ${artifact.type}, ` +
+                `path: ${artifact.path ?? "unknown"}, ` +
+                `source: ${artifact.source})`
+            )
+            .join("\n");
+
+    const observationDescription =
+      observations.length === 0
+        ? "No observations yet."
+        : observations
+            .map(
+              (obs) =>
+                `[${obs.type}] ${obs.message}`
+            )
+            .join("\n");
+
+    const completedStepsDescription =
+      completedSteps.length === 0
+        ? "No steps completed yet."
+        : completedSteps
+            .map(
+              (stepId) => {
+                const step =
+                  previousPlan.find(
+                    (s) =>
+                      s.id === stepId
+                  );
+                return step
+                  ? step.title
+                  : `Step ${stepId}`;
+              }
+            )
+            .join("\n");
+
+    const systemPrompt = `
+You are the adaptive planning brain of an AI agent.
+
+You have already executed some steps. Now you must decide what to do next.
+
+DO NOT use any tool-call syntax.
+DO NOT output <tool_call> tags.
+DO NOT use function calling.
+YOU ONLY OUTPUT RAW JSON.
+NOTHING else. ONLY JSON.
+
+CURRENT GOAL:
+
+${goal}
+
+AVAILABLE ARTIFACTS:
+
+${artifactDescription}
+
+AVAILABLE CAPABILITIES:
+
+${capabilityDescription}
+
+COMPLETED STEPS:
+
+${completedStepsDescription}
+
+OBSERVATIONS FROM EXECUTION:
+
+${observationDescription}
+
+DECISION RULES:
+
+1. Based on the observations, decide what happens next.
+2. You have three options:
+   a) "next_step" — Execute another capability step.
+   b) "goal_complete" — The user's goal has been achieved.
+   c) "ask_user" — You need more information from the user.
+3. If goal_complete: The observations show the goal is actually satisfied.
+4. If ask_user: Explain what information you need.
+5. If next_step: Provide the next executable step with capabilityId and inputs.
+6. Only use capabilities listed above.
+7. Never invent capabilities.
+8. Do not claim completion unless goal is genuinely satisfied.
+9. For image transformation tasks: Prefer "process_image" over "run_python".
+10. For file inspection tasks: Prefer "inspect_image" over "run_python".
+11. Return ONLY valid JSON. No tool calls. No markdown. No text.
+12. Output exactly one of these JSON objects, nothing else:
+
+For next_step:
+{
+  "decision": "next_step",
+  "reasoning": "why this step",
+  "nextStep": {
+    "id": "N",
+    "title": "description",
+    "capabilityId": "capability_id",
+    "input": {}
+  }
+}
+
+For goal_complete:
+{
+  "decision": "goal_complete",
+  "reasoning": "why goal is satisfied"
+}
+
+For ask_user:
+{
+  "decision": "ask_user",
+  "reasoning": "why more info needed",
+  "question": "What do you need to know?"
+}
+
+START JSON RESPONSE NOW:
+`;
+
+    const userPrompt = `
+Based on these observations, what should the agent do next?
+
+Observations:
+${observationDescription}
+
+Completed steps:
+${completedStepsDescription}
+`;
+
+    const response =
+      await llm.chat.completions.create({
+        model: "openrouter/free",
+
+        max_tokens: 1500,
+
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt,
+          },
+          {
+            role: "user",
+            content: userPrompt,
+          },
+        ],
+      });
+
+    const content =
+      response.choices[0]?.message?.content;
+
+    if (!content) {
+      throw new Error(
+        "LLM returned an empty replanning response."
+      );
+    }
+
+    return this.parseReplanResult(
+      content,
+      capabilities
+    );
+  }
+
+  private parseReplanResult(
+    content: string,
+    capabilities: Capability[]
+  ): ReplanResult {
+    const json =
+      this.extractJson(content);
+
+    let parsed: any;
+
+    try {
+      parsed =
+        JSON.parse(json);
+    } catch {
+      throw new Error(
+        `LLM returned invalid JSON in replanning:\n${content}`
+      );
+    }
+
+    if (
+      !parsed ||
+      typeof parsed.decision !==
+        "string"
+    ) {
+      throw new Error(
+        "LLM replan response does not contain a valid decision."
+      );
+    }
+
+    const decision =
+      parsed.decision as ReplanDecision;
+
+    if (
+      decision !== "next_step" &&
+      decision !== "goal_complete" &&
+      decision !== "ask_user"
+    ) {
+      throw new Error(
+        `Invalid replan decision: ${decision}`
+      );
+    }
+
+    const reasoning =
+      typeof parsed.reasoning ===
+        "string"
+        ? parsed.reasoning
+        : "No reasoning provided";
+
+    if (
+      decision === "goal_complete"
+    ) {
+      return {
+        decision,
+        reasoning,
+      };
+    }
+
+    if (decision === "ask_user") {
+      return {
+        decision,
+        reasoning,
+        question:
+          typeof parsed.question ===
+            "string"
+            ? parsed.question
+            : "What information do you need to provide?",
+      };
+    }
+
+    // decision === "next_step"
+    if (!parsed.nextStep) {
+      throw new Error(
+        "Replan decision is 'next_step' but nextStep not provided."
+      );
+    }
+
+    const nextStep = parsed.nextStep;
+
+    if (
+      typeof nextStep.id !== "string"
+    ) {
+      throw new Error(
+        "Next step has invalid id."
+      );
+    }
+
+    if (
+      typeof nextStep.title !==
+        "string"
+    ) {
+      throw new Error(
+        "Next step has invalid title."
+      );
+    }
+
+    if (
+      nextStep.capabilityId &&
+      typeof nextStep.capabilityId !==
+        "string"
+    ) {
+      throw new Error(
+        "Next step has invalid capabilityId."
+      );
+    }
+
+    // Validate capability exists
+    if (
+      nextStep.capabilityId
+    ) {
+      const available =
+        new Set(
+          capabilities.map(
+            (capability) =>
+              capability.id
+          )
+        );
+
+      if (
+        !available.has(
+          nextStep.capabilityId
+        )
+      ) {
+        throw new Error(
+          `Planner selected unknown capability '${nextStep.capabilityId}'.`
+        );
+      }
+    }
+
+    return {
+      decision,
+      reasoning,
+      nextStep: {
+        id: nextStep.id,
+        title: nextStep.title,
+        capabilityId:
+          nextStep.capabilityId,
+        input:
+          nextStep.input ?? {},
+        completed: false,
+      },
+    };
   }
 }
