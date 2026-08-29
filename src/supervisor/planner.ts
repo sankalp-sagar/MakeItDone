@@ -261,6 +261,40 @@ Do not search for an artifact that is already available.
       return fencedMatch[1].trim();
     }
 
+    // Try to find JSON after "START JSON" marker
+    const startJsonIdx =
+      cleaned.indexOf(
+        "START JSON"
+      );
+
+    if (startJsonIdx !== -1) {
+      const afterMarker =
+        cleaned.substring(
+          startJsonIdx + 10
+        );
+
+      const firstBrace =
+        afterMarker.indexOf("{");
+
+      const lastBrace =
+        afterMarker.lastIndexOf(
+          "}"
+        );
+
+      if (
+        firstBrace !== -1 &&
+        lastBrace !== -1 &&
+        lastBrace > firstBrace
+      ) {
+        return afterMarker
+          .slice(
+            firstBrace,
+            lastBrace + 1
+          )
+          .trim();
+      }
+    }
+
     const firstBrace =
       cleaned.indexOf("{");
 
@@ -722,6 +756,7 @@ DECISION RULES:
 5. Be skeptical of claims without evidence.
 6. Return ONLY valid JSON.
 7. No markdown, no text before/after.
+8. Emit exactly this before your JSON response: START JSON RESPONSE NOW:
 
 Return exactly:
 

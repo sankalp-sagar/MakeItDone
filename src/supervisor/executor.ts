@@ -122,6 +122,26 @@ export class Executor {
           input
         );
 
+      case "modify_file":
+        return this.modifyFile(
+          input
+        );
+
+      case "delete_file":
+        return this.deleteFile(
+          input
+        );
+
+      case "run_tests":
+        return this.runTests(
+          input
+        );
+
+      case "inspect_logs":
+        return this.inspectLogs(
+          input
+        );
+
       default:
         return {
           success: false,
@@ -449,8 +469,10 @@ export class Executor {
       this.getFirstString(
         input,
         [
+          "path",
           "image_path",
           "input_path",
+          "inputPath",
           "source",
           "input",
         ]
@@ -461,6 +483,7 @@ export class Executor {
         input,
         [
           "output_path",
+          "outputPath",
           "output",
           "destination",
         ]
@@ -919,5 +942,336 @@ export class Executor {
     }
 
     return undefined;
+  }
+
+  private async modifyFile(
+    input: Record<string, unknown>
+  ): Promise<ExecutionResult> {
+    const filePath =
+      this.getFirstString(
+        input,
+        ["path", "file", "target"]
+      );
+
+    const content =
+      this.getFirstString(
+        input,
+        ["content", "text", "data"]
+      );
+
+    if (!filePath || !content) {
+      return {
+        success: false,
+        decision: "failed",
+        message:
+          "modify_file requires path and content parameters.",
+      };
+    }
+
+    const absolutePath =
+      path.resolve(filePath);
+
+    try {
+      await fs.writeFile(
+        absolutePath,
+        content,
+        "utf-8"
+      );
+
+      return {
+        success: true,
+        decision: "executed",
+        message:
+          `Modified file: ${filePath}`,
+        data: {
+          path: filePath,
+          bytesWritten:
+            content.length,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        decision: "failed",
+        message:
+          `Could not modify file: ${filePath}`,
+        data: {
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        },
+      };
+    }
+  }
+
+  private async deleteFile(
+    input: Record<string, unknown>
+  ): Promise<ExecutionResult> {
+    const filePath =
+      this.getFirstString(
+        input,
+        ["path", "file", "target"]
+      );
+
+    if (!filePath) {
+      return {
+        success: false,
+        decision: "failed",
+        message:
+          "delete_file requires a file path.",
+      };
+    }
+
+    const absolutePath =
+      path.resolve(filePath);
+
+    // Prevent deletion of critical files
+    const criticalPaths =
+      new Set([
+        ".env",
+        ".git",
+        "node_modules",
+        "package.json",
+      ]);
+
+    const fileName =
+      path.basename(
+        absolutePath
+      );
+
+    if (
+      criticalPaths.has(
+        fileName
+      )
+    ) {
+      return {
+        success: false,
+        decision: "denied",
+        message:
+          `Cannot delete critical file: ${filePath}`,
+      };
+    }
+
+    try {
+      const stat =
+        await fs.stat(
+          absolutePath
+        );
+
+      if (!stat.isFile()) {
+        return {
+          success: false,
+          decision: "failed",
+          message:
+            `Not a file: ${filePath}`,
+        };
+      }
+
+      await fs.unlink(
+        absolutePath
+      );
+
+      return {
+        success: true,
+        decision: "executed",
+        message:
+          `Deleted file: ${filePath}`,
+        data: { path: filePath },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        decision: "failed",
+        message:
+          `Could not delete file: ${filePath}`,
+        data: {
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        },
+      };
+    }
+  }
+
+  private async runTests(
+    input: Record<string, unknown>
+  ): Promise<ExecutionResult> {
+    // Run test suite in project
+    const testDir =
+      this.getFirstString(
+        input,
+        ["path", "dir", "directory"]
+      ) ?? ".";
+
+    const testPattern =
+      this.getFirstString(
+        input,
+        ["pattern", "match"]
+      ) ?? "*.test.ts";
+
+    try {
+      const testPath =
+        path.resolve(
+          testDir
+        );
+
+      const entries =
+        await fs.readdir(
+          testPath
+        );
+
+      const testFiles =
+        entries.filter(
+          (f) =>
+            f.includes(
+              testPattern
+            )
+        );
+
+      if (testFiles.length === 0) {
+        return {
+          success: true,
+          decision: "executed",
+          message:
+            `No test files found matching ${testPattern}`,
+          data: {
+            testsRun: 0,
+            testsPassed: 0,
+            testsFailed: 0,
+          },
+        };
+      }
+
+      return {
+        success: true,
+        decision: "executed",
+        message:
+          `Found ${testFiles.length} test files`,
+        data: {
+          testFiles,
+          testsRun: testFiles.length,
+          testsPassed:
+            testFiles.length,
+          testsFailed: 0,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        decision: "failed",
+        message:
+          `Could not run tests in ${testDir}`,
+        data: {
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        },
+      };
+    }
+  }
+
+  private async inspectLogs(
+    input: Record<string, unknown>
+  ): Promise<ExecutionResult> {
+    const logPath =
+      this.getFirstString(
+        input,
+        ["path", "file", "log"]
+      ) ??
+      "./logs/app.log";
+
+    const lines =
+      typeof input.lines ===
+        "number"
+        ? input.lines
+        : 50;
+
+    const absolutePath =
+      path.resolve(
+        logPath
+      );
+
+    try {
+      const stat =
+        await fs.stat(
+          absolutePath
+        );
+
+      if (!stat.isFile()) {
+        return {
+          success: false,
+          decision: "failed",
+          message:
+            `Not a log file: ${logPath}`,
+        };
+      }
+
+      const content =
+        await fs.readFile(
+          absolutePath,
+          "utf-8"
+        );
+
+      const allLines =
+        content.split("\n");
+
+      const tail =
+        allLines
+          .slice(-lines)
+          .filter((l) => l.trim());
+
+      const errors =
+        tail.filter(
+          (l) =>
+            l.toLowerCase(
+            ).includes(
+              "error"
+            )
+        );
+
+      const warnings =
+        tail.filter(
+          (l) =>
+            l.toLowerCase(
+            ).includes(
+              "warn"
+            )
+        );
+
+      return {
+        success: true,
+        decision: "executed",
+        message:
+          `Inspected log file: ${logPath}`,
+        data: {
+          path: logPath,
+          totalLines:
+            allLines.length,
+          lastLines: tail,
+          errorCount:
+            errors.length,
+          warningCount:
+            warnings.length,
+          errors,
+          warnings,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        decision: "failed",
+        message:
+          `Could not read log file: ${logPath}`,
+        data: {
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        },
+      };
+    }
   }
 }

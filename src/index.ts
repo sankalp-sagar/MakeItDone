@@ -137,6 +137,40 @@ async function main() {
     requiresApproval: true,
   });
 
+  registry.register({
+    id: "run_tests",
+
+    name: "Run Tests",
+
+    description:
+      "Discover and report on test files in the project.",
+
+    category: "observation",
+
+    risk: "none",
+
+    reversible: true,
+
+    requiresApproval: false,
+  });
+
+  registry.register({
+    id: "inspect_logs",
+
+    name: "Inspect Logs",
+
+    description:
+      "Read and analyze application log files.",
+
+    category: "observation",
+
+    risk: "none",
+
+    reversible: true,
+
+    requiresApproval: false,
+  });
+
   const riskEngine =
     new RiskEngine();
 
