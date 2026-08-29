@@ -7,6 +7,7 @@
 import { describe, expect, it } from "@jest/globals";
 
 import { Planner } from "../src/supervisor/planner";
+import { Supervisor } from "../src/supervisor/supervisor";
 import { isDangerousRequest, parseTaskInput } from "../src/task-runner";
 
 describe("Supervisor", () => {
@@ -61,6 +62,34 @@ describe("Supervisor", () => {
 
       expect(result.decision).toBe("ask_user");
       expect(result.question).toContain("information");
+    });
+
+    it("should treat a resumed answer as the new task goal", async () => {
+      const registry = {
+        getAll: () => [],
+      } as any;
+      const supervisor = new Supervisor({} as any, registry);
+      const createPlan = jest.fn().mockResolvedValue([]);
+      (supervisor as any).planner = { createPlan };
+
+      const state = {
+        id: "task-1",
+        goal: "old task",
+        status: "waiting_for_user",
+        observations: [],
+        artifacts: [],
+        plan: [],
+        pendingQuestions: ["What would you like me to do?"],
+        userResponses: [],
+        completedSteps: [],
+      };
+
+      const next = await supervisor.resumeTask(state as any, "What would you like me to do?", "sum 3 and 5");
+
+      expect(next.goal).toBe("sum 3 and 5");
+      expect(next.pendingQuestions).toEqual([]);
+      expect(next.status).toBe("executing");
+      expect(createPlan).toHaveBeenCalledWith("sum 3 and 5", [], []);
     });
   });
 

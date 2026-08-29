@@ -47,6 +47,24 @@ export class Supervisor {
       completedSteps: [],
     };
 
+    // Detect vague goals and respond with greeting (no LLM cost)
+    // Only true greetings, not conversational responses
+    const vaguePatterns = /^(hello|hi|hey|test)$/i;
+    if (vaguePatterns.test(goal.trim())) {
+      state.status = "waiting_for_user";
+      
+      if (artifacts.length > 0) {
+        state.pendingQuestions.push(
+          `Hello! I see you have ${artifacts.length} file(s) attached (${artifacts.map((a) => a.name).join(", ")}). What would you like me to do with them? I can resize, enhance, convert formats, analyze, and more.`
+        );
+      } else {
+        state.pendingQuestions.push(
+          "Hello! I'm here to help. What would you like me to do? You can describe tasks like 'make a passport photo', 'resize an image', 'convert to PDF', or upload files and tell me what to do with them."
+        );
+      }
+      return state;
+    }
+
     const capabilities =
       this.registry.getAll();
 
@@ -80,44 +98,56 @@ export class Supervisor {
       );
     }
 
-    // Record user response
+    const normalizedAnswer = answer.trim();
+
+    if (!normalizedAnswer) {
+      return state;
+    }
+
+    state.goal = normalizedAnswer;
+    state.plan = [];
+    state.completedSteps = [];
+
     state.userResponses.push({
       question,
-      answer,
+      answer: normalizedAnswer,
       timestamp:
         Date.now(),
     });
 
-    // Add observation about user input
     state.observations.push({
       id: crypto.randomUUID(),
 
       type: "information",
 
       message:
-        `User response: ${answer}`,
+        `User response: ${normalizedAnswer}`,
 
       data: {
         question,
-        answer,
+        answer: normalizedAnswer,
       },
     });
 
-    // Clear pending questions
     state.pendingQuestions = [];
-
-    // Resume execution
-    state.status =
-      "executing";
+    state.status = "planning";
 
     console.log(
-      `\nTask resumed with user input: ${answer}`
+      `\nTask resumed with user input: ${normalizedAnswer}`
     );
 
-    // Replan with new info
-    return this.replanAfterCompletion(
-      state
-    );
+    const capabilities =
+      this.registry.getAll();
+
+    state.plan =
+      await this.planner.createPlan(
+        state.goal,
+        capabilities,
+        state.artifacts
+      );
+
+    state.status = "executing";
+    return state;
   }
 
   /**

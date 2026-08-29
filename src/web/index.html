@@ -27,8 +27,11 @@
 
       .container {
         max-width: 900px;
-        margin: 40px auto;
+        margin: 0 auto;
         padding: 24px;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
       }
 
       .panel {
@@ -37,11 +40,75 @@
         border-radius: 16px;
         padding: 20px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        display: flex;
+        flex-direction: column;
+        flex: 1;
       }
 
       h1 {
         margin-top: 0;
         margin-bottom: 12px;
+        font-size: 24px;
+      }
+
+      .chat-history {
+        flex: 1;
+        overflow-y: auto;
+        margin-bottom: 16px;
+        padding-right: 8px;
+      }
+
+      .chat-history::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .chat-history::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .chat-history::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.1);
+        border-radius: 3px;
+      }
+
+      .message {
+        margin-bottom: 12px;
+        padding: 12px;
+        border-radius: 8px;
+        word-wrap: break-word;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .message.user {
+        background: rgba(96, 165, 250, 0.15);
+        border-left: 3px solid var(--primary);
+        margin-left: 40px;
+      }
+
+      .message.agent {
+        background: rgba(52, 211, 153, 0.1);
+        border-left: 3px solid var(--success);
+        margin-right: 40px;
+      }
+
+      .message.error {
+        background: rgba(248, 113, 113, 0.1);
+        border-left: 3px solid var(--danger);
+        margin-right: 40px;
+      }
+
+      .message-label {
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .input-section {
+        border-top: 1px solid rgba(255,255,255,0.08);
+        padding-top: 16px;
       }
 
       .dropzone {
@@ -66,8 +133,7 @@
 
       textarea {
         width: 100%;
-        min-height: 120px;
-        margin-top: 18px;
+        min-height: 80px;
         resize: vertical;
         border-radius: 10px;
         border: 1px solid rgba(255,255,255,0.12);
@@ -75,12 +141,12 @@
         color: var(--text);
         padding: 12px;
         font: inherit;
+        margin-bottom: 12px;
       }
 
       .toolbar {
         display: flex;
         gap: 12px;
-        margin-top: 18px;
         flex-wrap: wrap;
       }
 
@@ -100,10 +166,10 @@
       }
 
       .file-list {
-        margin-top: 18px;
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
+        margin-top: 12px;
       }
 
       .chip {
@@ -116,14 +182,15 @@
       }
 
       .status {
-        margin-top: 18px;
+        margin-top: 12px;
         color: var(--muted);
         min-height: 24px;
+        font-size: 13px;
       }
 
       .result-box {
         display: none;
-        margin-top: 18px;
+        margin-top: 12px;
       }
 
       .result-box img {
@@ -137,17 +204,23 @@
         margin-top: 12px;
         color: var(--primary);
         text-decoration: none;
+        font-size: 13px;
       }
 
-      pre {
-        margin-top: 16px;
-        white-space: pre-wrap;
-        word-break: break-word;
-        background: #020817;
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 10px;
-        padding: 12px;
-        color: #cbd5e1;
+      .spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255,255,255,0.2);
+        border-top: 2px solid var(--primary);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
       }
     </style>
   </head>
@@ -156,28 +229,41 @@
       <div class="panel">
         <h1>MakeItDone Agent</h1>
 
-        <div id="dropzone" class="dropzone">
-          Drag and drop files here<br />
-          or click to choose files
+        <div id="chatHistory" class="chat-history"></div>
+
+        <div class="input-section">
+          <div id="fileSection" style="margin-bottom: 12px;">
+            <div id="dropzone" class="dropzone" style="margin-bottom: 12px;">
+              📎 Drag files here or click to add<br />
+              <span style="font-size: 12px; color: var(--muted);">Optional — just type for text tasks</span>
+            </div>
+            <input id="fileInput" class="file-input" type="file" multiple />
+            <div id="fileList" class="file-list"></div>
+          </div>
+
+          <textarea id="taskInput" placeholder="What do you want to do? (e.g., make a passport photo, analyze this image, convert to PDF)"></textarea>
+
+          <div style="margin-top: 12px; margin-bottom: 12px; display: none;" id="fileSectionOld">
+            <div id="dropzoneOld" class="dropzone" style="margin-bottom: 12px;">
+              Drag and drop files here<br />
+              or click to choose files
+            </div>
+            <input id="fileInputOld" class="file-input" type="file" multiple />
+            <div id="fileListOld" class="file-list"></div>
+          </div>
+
+          <div class="toolbar">
+            <button id="runBtn">Run task</button>
+            <button id="clearBtn" class="secondary">Clear history</button>
+          </div>
+
+          <div id="status" class="status"></div>
         </div>
-        <input id="fileInput" class="file-input" type="file" multiple />
-
-        <textarea id="taskInput" placeholder="Describe the task, e.g. make a passport size photo from this image"></textarea>
-
-        <div class="toolbar">
-          <button id="runBtn">Run task</button>
-          <button id="clearBtn" class="secondary">Clear</button>
-        </div>
-
-        <div id="fileList" class="file-list"></div>
-        <div id="status" class="status"></div>
 
         <div id="resultBox" class="result-box">
           <img id="resultImage" alt="Generated result" />
           <div><a id="downloadLink" class="download-link" href="#">Download result</a></div>
         </div>
-
-        <pre id="output">Waiting for input...</pre>
       </div>
     </div>
 
@@ -187,14 +273,16 @@
       const taskInput = document.getElementById('taskInput');
       const fileList = document.getElementById('fileList');
       const statusEl = document.getElementById('status');
-      const outputEl = document.getElementById('output');
       const resultBox = document.getElementById('resultBox');
       const resultImage = document.getElementById('resultImage');
       const downloadLink = document.getElementById('downloadLink');
       const runBtn = document.getElementById('runBtn');
       const clearBtn = document.getElementById('clearBtn');
+      const fileSectionEl = document.getElementById('fileSection');
+      const chatHistoryEl = document.getElementById('chatHistory');
 
       const selectedFiles = [];
+      const chatHistory = [];
 
       function renderFiles() {
         fileList.innerHTML = '';
@@ -232,12 +320,40 @@
         fileInput.value = '';
       });
 
+      function renderChatHistory() {
+        chatHistoryEl.innerHTML = '';
+        chatHistory.forEach((msg) => {
+          const msgEl = document.createElement('div');
+          msgEl.className = `message ${msg.role}`;
+          msgEl.innerHTML = `
+            <div class="message-label">${msg.role === 'user' ? 'You' : (msg.role === 'agent' ? 'Agent' : 'Error')}</div>
+            <div>${escapeHtml(msg.text)}</div>
+          `;
+          chatHistoryEl.appendChild(msgEl);
+        });
+        chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      function addChatMessage(role, text) {
+        chatHistory.push({ role, text });
+        renderChatHistory();
+      }
+
       clearBtn.addEventListener('click', () => {
         selectedFiles.length = 0;
+        chatHistory.length = 0;
         renderFiles();
+        renderChatHistory();
         resultBox.style.display = 'none';
-        outputEl.textContent = 'Waiting for input...';
         statusEl.textContent = '';
+        taskInput.value = '';
+        taskInput.focus();
       });
 
       function setResultImage(path) {
@@ -245,11 +361,53 @@
           resultBox.style.display = 'none';
           return;
         }
-
         resultBox.style.display = 'block';
         resultImage.src = path;
         downloadLink.href = path;
         downloadLink.textContent = 'Download result';
+      }
+
+      function formatResultMessage(payload) {
+        const task = payload?.task;
+        if (!task) {
+          return 'Error: No task result returned.';
+        }
+
+        if (task.status === 'waiting_for_user') {
+          if (task.pendingQuestions && task.pendingQuestions.length > 0) {
+            return task.pendingQuestions.join(' ');
+          }
+          return 'I need more information. Can you be more specific about what you want?';
+        }
+
+        const isError = task.status === 'failed';
+        let msg = '';
+
+        if (isError) {
+          msg += 'Failed to complete task. ';
+          if (task.observations && task.observations.length > 0) {
+            const lastObs = task.observations[task.observations.length - 1];
+            if (lastObs?.message) {
+              msg += 'Reason: ' + lastObs.message;
+            }
+          }
+        } else {
+          msg += 'Task complete. ';
+          if (task.observations && task.observations.length > 0) {
+            const steps = task.observations.map((o) => o.message || o.type).filter((s) => s);
+            if (steps.length > 0) {
+              msg += 'What happened: ' + steps.join(' Then ') + '.';
+            }
+          }
+          if (task.artifacts && task.artifacts.length > 0) {
+            const outputs = task.artifacts.filter((a) => a.type === 'image').map((a) => a.name);
+            if (outputs.length > 0) {
+              msg += ' Generated: ' + outputs.join(', ') + '.';
+            }
+          }
+        }
+
+        return msg;
       }
 
       runBtn.addEventListener('click', async () => {
@@ -259,7 +417,10 @@
           return;
         }
 
-        statusEl.textContent = 'Uploading files and running task...';
+        addChatMessage('user', goal + (selectedFiles.length > 0 ? ` (with ${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''})` : ''));
+        taskInput.value = '';
+        resultBox.style.display = 'none';
+        statusEl.innerHTML = '<span class="spinner"></span>Thinking...';
 
         const files = await Promise.all(selectedFiles.map(async (file) => {
           const arrayBuffer = await file.arrayBuffer();
@@ -275,6 +436,9 @@
           };
         }));
 
+        selectedFiles.length = 0;
+        renderFiles();
+
         try {
           const response = await fetch('/api/task', {
             method: 'POST',
@@ -283,19 +447,29 @@
           });
 
           const payload = await response.json();
-          outputEl.textContent = JSON.stringify(payload, null, 2);
+          statusEl.textContent = '';
+
+          if (!response.ok) {
+            addChatMessage('error', payload?.error || 'Request failed.');
+            return;
+          }
+
+          const resultMsg = formatResultMessage(payload);
+          addChatMessage('agent', resultMsg);
 
           const imagePath = payload?.task?.artifacts?.find((artifact) => artifact.type === 'image')?.path;
           if (imagePath) {
             setResultImage('/files/' + encodeURIComponent(imagePath.split('/').pop() || 'result.jpg'));
-          } else {
-            setResultImage(null);
           }
-
-          statusEl.textContent = response.ok ? 'Task complete.' : 'Task failed.';
         } catch (error) {
-          outputEl.textContent = String(error);
-          statusEl.textContent = 'Request failed.';
+          statusEl.textContent = '';
+          addChatMessage('error', String(error));
+        }
+      });
+
+      taskInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && event.ctrlKey) {
+          runBtn.click();
         }
       });
     </script>

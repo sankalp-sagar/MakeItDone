@@ -4,8 +4,29 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { runTaskFromGoal } from "../task-runner";
+import { Supervisor } from "../supervisor/supervisor";
+import { CapabilityRegistry } from "../capabilities/registry";
+import { Executor } from "../supervisor/executor";
+import { RiskEngine } from "../safety/risk-engine";
+import type { TaskState } from "../supervisor/state";
 
 const PORT = Number(process.env.PORT || 3000);
+
+// Simple in-memory session store: sessionId → active task
+const sessions = new Map<string, TaskState>();
+
+function getSessionId(req: http.IncomingMessage): string {
+  const cookie = req.headers.cookie || "";
+  const match = cookie.match(/sessionId=([^;]+)/);
+  if (match) {
+    return match[1];
+  }
+  return "";
+}
+
+function setSessionCookie(res: http.ServerResponse, sessionId: string): void {
+  res.setHeader("Set-Cookie", `sessionId=${sessionId}; Path=/; HttpOnly; Max-Age=3600`);
+}
 
 const mimeTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -63,25 +84,129 @@ const server = http.createServer(async (req, res) => {
         };
 
         const goal = payload.goal?.trim() || "Process the attached files";
+        const sessionId = getSessionId(req);
+        const existingTask = sessionId ? sessions.get(sessionId) : null;
 
-        const artifacts = (payload.files ?? []).map((file, index) => {
-          const filePath = path.join(process.cwd(), "uploads", `${Date.now()}-${index}-${file.name}`);
-          const out = Buffer.from(file.contentBase64 || "", "base64");
-          fs.mkdir(path.dirname(filePath), { recursive: true }).catch(() => undefined);
-          fs.writeFile(filePath, out).catch(() => undefined);
+        let task: TaskState;
 
-          const artifactType = file.type?.startsWith("image/") ? "image" : "document";
+        if (existingTask && existingTask.status === "waiting_for_user" && existingTask.pendingQuestions.length > 0) {
+          // Resume existing task with user's answer
+          const registry = new CapabilityRegistry();
+          registry.register({
+            id: "read_file",
+            name: "Read File",
+            description: "Read the contents of a text file.",
+            category: "observation",
+            risk: "none",
+            reversible: true,
+            requiresApproval: false,
+          });
+          registry.register({
+            id: "inspect_directory",
+            name: "Inspect Directory",
+            description: "List files and directories available in a location.",
+            category: "observation",
+            risk: "none",
+            reversible: true,
+            requiresApproval: false,
+          });
+          registry.register({
+            id: "inspect_image",
+            name: "Inspect Image",
+            description: "Get metadata about an image file (dimensions, format, colors).",
+            category: "observation",
+            risk: "none",
+            reversible: true,
+            requiresApproval: false,
+          });
+          registry.register({
+            id: "run_python",
+            name: "Run Python",
+            description: "Execute Python code.",
+            category: "execution",
+            risk: "low",
+            reversible: true,
+            requiresApproval: false,
+          });
+          registry.register({
+            id: "process_image",
+            name: "Process Image",
+            description: "Transform an image file and produce a new image artifact.",
+            category: "execution",
+            risk: "low",
+            reversible: true,
+            requiresApproval: false,
+          });
+          registry.register({
+            id: "modify_file",
+            name: "Modify File",
+            description: "Create or modify a file.",
+            category: "execution",
+            risk: "medium",
+            reversible: true,
+            requiresApproval: true,
+          });
+          registry.register({
+            id: "delete_file",
+            name: "Delete File",
+            description: "Delete a file from the filesystem.",
+            category: "execution",
+            risk: "high",
+            reversible: false,
+            requiresApproval: true,
+          });
+          registry.register({
+            id: "run_tests",
+            name: "Run Tests",
+            description: "Discover and report on test files in the project.",
+            category: "observation",
+            risk: "none",
+            reversible: true,
+            requiresApproval: false,
+          });
+          registry.register({
+            id: "inspect_logs",
+            name: "Inspect Logs",
+            description: "Read and analyze application log files.",
+            category: "observation",
+            risk: "none",
+            reversible: true,
+            requiresApproval: false,
+          });
 
-          return {
-            id: crypto.randomUUID(),
-            name: file.name,
-            type: artifactType as "image" | "document" | "code" | "data" | "unknown",
-            path: filePath,
-            source: "user" as const,
-          };
-        });
+          const riskEngine = new RiskEngine();
+          const executor = new Executor(registry, riskEngine);
+          const supervisor = new Supervisor(executor, registry);
 
-        const task = await runTaskFromGoal(goal, artifacts);
+          const pendingQuestion = existingTask.pendingQuestions[0] || "Please continue";
+          task = await supervisor.resumeTask(existingTask, pendingQuestion, goal);
+        } else {
+          // Start new task
+          const artifacts = (payload.files ?? []).map((file, index) => {
+            const filePath = path.join(process.cwd(), "uploads", `${Date.now()}-${index}-${file.name}`);
+            const out = Buffer.from(file.contentBase64 || "", "base64");
+            fs.mkdir(path.dirname(filePath), { recursive: true }).catch(() => undefined);
+            fs.writeFile(filePath, out).catch(() => undefined);
+
+            const artifactType = file.type?.startsWith("image/") ? "image" : "document";
+
+            return {
+              id: crypto.randomUUID(),
+              name: file.name,
+              type: artifactType as "image" | "document" | "code" | "data" | "unknown",
+              path: filePath,
+              source: "user" as const,
+            };
+          });
+
+          task = await runTaskFromGoal(goal, artifacts);
+        }
+
+        // Store task in session
+        const newSessionId = sessionId || crypto.randomUUID().toString();
+        sessions.set(newSessionId, task);
+        setSessionCookie(res, newSessionId);
+
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, task }, null, 2));
       } catch (error) {
