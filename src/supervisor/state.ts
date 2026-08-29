@@ -19,6 +19,14 @@ export interface Observation {
   data?: unknown;
 }
 
+export interface UserResponse {
+  question: string;
+
+  answer: string;
+
+  timestamp: number;
+}
+
 export interface Artifact {
   id: string;
 
@@ -67,6 +75,8 @@ export interface TaskState {
   plan: PlanStep[];
 
   pendingQuestions: string[];
+
+  userResponses: UserResponse[];
 
   completedSteps: string[];
 }

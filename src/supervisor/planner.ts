@@ -8,6 +8,7 @@ import {
   Artifact,
   PlanStep,
   Observation,
+  UserResponse,
 } from "./state";
 
 interface LLMPlanStep {
@@ -318,7 +319,8 @@ Do not search for an artifact that is already available.
     artifacts: Artifact[],
     observations: Observation[],
     previousPlan: PlanStep[],
-    completedSteps: string[]
+    completedSteps: string[],
+    userResponses: UserResponse[] = []
   ): Promise<ReplanResult> {
     const capabilityDescription =
       capabilities
@@ -372,6 +374,16 @@ Do not search for an artifact that is already available.
             )
             .join("\n");
 
+    const userResponseDescription =
+      userResponses.length === 0
+        ? "No user responses yet."
+        : userResponses
+            .map(
+              (resp) =>
+                `Q: ${resp.question}\nA: ${resp.answer}`
+            )
+            .join("\n\n");
+
     const systemPrompt = `
 You are the adaptive planning brain of an AI agent.
 
@@ -402,6 +414,10 @@ ${completedStepsDescription}
 OBSERVATIONS FROM EXECUTION:
 
 ${observationDescription}
+
+USER RESPONSES:
+
+${userResponseDescription}
 
 DECISION RULES:
 

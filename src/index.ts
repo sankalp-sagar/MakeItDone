@@ -194,6 +194,53 @@ async function main() {
     );
   }
 
+  // Demonstrate user resume
+  if (
+    task.status ===
+    "waiting_for_user"
+  ) {
+    console.log(
+      "\n[USER INTERACTION]"
+    );
+
+    console.log(
+      "Agent asked:",
+      task.pendingQuestions[0]
+    );
+
+    console.log(
+      "\nSimulating user response..."
+    );
+
+    // Resume with user answer
+    const question =
+      task.pendingQuestions[0] ||
+      "What dimensions?";
+
+    const answer =
+      "600x600 pixels, white background, standard passport format";
+
+    await supervisor.resumeTask(
+      task,
+      question,
+      answer
+    );
+
+    // Continue execution loop after resume
+    const executionLoop = async () => {
+      while (
+        task.status ===
+        "executing"
+      ) {
+        await supervisor.executeNextStep(
+          task
+        );
+      }
+    };
+
+    await executionLoop();
+  }
+
   console.log(
     "\nFINAL STATE:"
   );

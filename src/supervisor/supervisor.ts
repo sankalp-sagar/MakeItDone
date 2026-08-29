@@ -7,6 +7,7 @@ import {
 import {
   TaskState,
   Artifact,
+  UserResponse,
 } from "./state";
 
 import {
@@ -41,6 +42,8 @@ export class Supervisor {
 
       pendingQuestions: [],
 
+      userResponses: [],
+
       completedSteps: [],
     };
 
@@ -58,6 +61,63 @@ export class Supervisor {
       "executing";
 
     return state;
+  }
+
+  /**
+   * Resume task after user provides answer to a pending question.
+   */
+  async resumeTask(
+    state: TaskState,
+    question: string,
+    answer: string
+  ): Promise<TaskState> {
+    if (
+      state.status !==
+        "waiting_for_user"
+    ) {
+      throw new Error(
+        `Cannot resume task in status ${state.status}. Task must be waiting_for_user.`
+      );
+    }
+
+    // Record user response
+    state.userResponses.push({
+      question,
+      answer,
+      timestamp:
+        Date.now(),
+    });
+
+    // Add observation about user input
+    state.observations.push({
+      id: crypto.randomUUID(),
+
+      type: "information",
+
+      message:
+        `User response: ${answer}`,
+
+      data: {
+        question,
+        answer,
+      },
+    });
+
+    // Clear pending questions
+    state.pendingQuestions = [];
+
+    // Resume execution
+    state.status =
+      "executing";
+
+    console.log(
+      `\nTask resumed with user input: ${answer}`
+    );
+
+    // Replan with new info
+    return this.replanAfterCompletion(
+      state
+    );
   }
 
   /**
@@ -218,7 +278,8 @@ export class Supervisor {
         state.artifacts,
         state.observations,
         state.plan,
-        state.completedSteps
+        state.completedSteps,
+        state.userResponses
       );
 
     console.log(
