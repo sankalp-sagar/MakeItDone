@@ -3,31 +3,102 @@ import { RiskEngine } from "./safety/risk-engine";
 import { Executor } from "./supervisor/executor";
 import { Supervisor } from "./supervisor/supervisor";
 import { Artifact, TaskState } from "./supervisor/state";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import * as readline from "node:readline";
 
-export function parseTaskInput(argv: string[]): string {
-  const args = argv.slice(2);
+export interface ParsedTaskInput {
+  goal: string;
+  artifacts: Artifact[];
+}
 
-  const goalFlagIndex = args.findIndex(
-    (arg) => arg === "--goal" || arg === "-g"
-  );
+export function isDangerousRequest(goal: string): boolean {
+  const text = goal.toLowerCase();
 
-  if (goalFlagIndex !== -1) {
-    const nextValue = args[goalFlagIndex + 1];
-    if (nextValue) {
-      return nextValue;
+  const dangerousPatterns = [
+    /delete.*(database|user.*data|files|system|all)/i,
+    /wipe.*(disk|database|files|system)/i,
+    /destroy|format.*disk|rm -rf|drop table|shutdown|reboot/i,
+    /steal|exfiltrate|leak.*secret|bypass.*auth|disable.*security/i,
+    /malware|virus|ransomware|phishing|social engineering/i,
+  ];
+
+  return dangerousPatterns.some((pattern) => pattern.test(text));
+}
+
+export function parseTaskInput(argv: string[]): ParsedTaskInput {
+  const normalizedArgs =
+    argv.some(
+      (arg) =>
+        /node|tsx|ts-node|\.m?js$|\.ts$/.test(arg)
+    )
+      ? argv.slice(2)
+      : argv;
+
+  const args = normalizedArgs;
+  const artifacts: Artifact[] = [];
+  const goalParts: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === "--goal" || arg === "-g") {
+      const nextValue = args[i + 1];
+      if (nextValue && !nextValue.startsWith("-")) {
+        goalParts.push(nextValue);
+        i += 1;
+      }
+      continue;
+    }
+
+    if (arg === "--file" || arg === "-f" || arg === "--attach" || arg === "--attachment") {
+      const nextValue = args[i + 1];
+      if (nextValue && !nextValue.startsWith("-")) {
+        const resolved = path.resolve(nextValue);
+        if (fs.existsSync(resolved)) {
+          artifacts.push({
+            id: crypto.randomUUID(),
+            name: path.basename(resolved),
+            type: detectArtifactType(resolved),
+            path: nextValue,
+            source: "user",
+          });
+        }
+        i += 1;
+      }
+      continue;
+    }
+
+    if (!arg.startsWith("-") && arg.trim()) {
+      goalParts.push(arg);
     }
   }
 
-  const positional = args.filter(
-    (arg) => !arg.startsWith("--") && !arg.startsWith("-")
-  );
+  const goal = goalParts.join(" ").trim();
 
-  if (positional.length > 0) {
-    return positional.join(" ");
+  return {
+    goal:
+      goal || "Complete the task described by the provided files and instructions.",
+    artifacts,
+  };
+}
+
+function detectArtifactType(filePath: string): Artifact["type"] {
+  const extension = path.extname(filePath).toLowerCase();
+
+  if ([".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg"].includes(extension)) {
+    return "image";
   }
 
-  return "Make a passport photo from this image";
+  if ([".pdf", ".doc", ".docx", ".txt", ".md", ".rtf"].includes(extension)) {
+    return "document";
+  }
+
+  if ([".json", ".csv", ".yaml", ".yml", ".xml", ".html", ".zip"].includes(extension)) {
+    return "data";
+  }
+
+  return "unknown";
 }
 
 export async function runTaskFromGoal(

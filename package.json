@@ -5,7 +5,8 @@
     "test:coverage": "jest --coverage",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "typecheck:build": "tsc --noEmit",
-    "task": "npx tsx src/task-runner.ts"
+    "task": "npx tsx src/task-runner.ts",
+    "web": "npx tsx src/web/server.ts"
   },
   "dependencies": {
     "@daytona/sdk": "^0.207.0",

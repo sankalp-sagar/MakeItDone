@@ -351,6 +351,9 @@ export class Executor {
         [
           "path",
           "image_path",
+          "imagePath",
+          "filePath",
+          "file_path",
           "input_path",
           "source",
           "input",
@@ -471,8 +474,13 @@ export class Executor {
         [
           "path",
           "image_path",
+          "imagePath",
+          "filePath",
+          "file_path",
           "input_path",
           "inputPath",
+          "sourceArtifact",
+          "source_artifact",
           "source",
           "input",
         ]

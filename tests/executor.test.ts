@@ -4,9 +4,11 @@
  * Test suite for capability execution and risk evaluation.
  */
 
-import { describe, it } from "@jest/globals";
+import { describe, expect, it } from "@jest/globals";
 
-// TODO: Import executor, risk engine, capabilities
+import { CapabilityRegistry } from "../src/capabilities/registry";
+import { RiskEngine } from "../src/safety/risk-engine";
+import { Executor } from "../src/supervisor/executor";
 
 describe("Executor", () => {
   describe("execute", () => {
@@ -61,8 +63,31 @@ describe("Executor", () => {
         // TODO: Implement
       });
 
-      it("should normalize LLM parameter names", () => {
-        // TODO: Implement
+      it("should normalize LLM parameter names", async () => {
+        const registry = new CapabilityRegistry();
+        registry.register({
+          id: "process_image",
+          name: "Process Image",
+          description: "Transform an image file and produce a new image artifact.",
+          category: "execution",
+          risk: "low",
+          reversible: true,
+          requiresApproval: false,
+        });
+
+        const executor = new Executor(registry, new RiskEngine());
+        const result = await executor.execute({
+          capabilityId: "process_image",
+          input: {
+            sourceArtifact: "./test-assets/input.jpg",
+            output_path: "./output/alias-test.jpg",
+            width: 300,
+            height: 300,
+          },
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.decision).toBe("executed");
       });
     });
   });

@@ -4,9 +4,10 @@
  * Test suite for supervisor state, planning, and execution loops.
  */
 
-import { describe, it } from "@jest/globals";
+import { describe, expect, it } from "@jest/globals";
 
-// TODO: Import supervisor and related modules
+import { Planner } from "../src/supervisor/planner";
+import { isDangerousRequest, parseTaskInput } from "../src/task-runner";
 
 describe("Supervisor", () => {
   describe("startTask", () => {
@@ -20,6 +21,46 @@ describe("Supervisor", () => {
 
     it("should initialize task status to 'planning'", () => {
       // TODO: Implement
+    });
+
+    it("should recover JSON when the model emits a safety line before a structured response", () => {
+      const planner = new Planner();
+      const result = (planner as any).extractJson(`User Safety: safe\n{\n  "decision": "next_step",\n  "reasoning": "The input image has been inspected. The goal is to make a passpo\nrt size photo",\n  "nextStep": {\n    "id": "N1",\n    "title": "Transform image into passport photo",\n    "capabilityId": "process_image",\n    "input": { "path": "./test-assets/input.jpg", "output_path": "./test-assets/passport_photo.jpg" }\n  }\n}`);
+
+      expect(result).toContain('"decision": "next_step"');
+      expect(result).toContain('"capabilityId": "process_image"');
+    });
+
+    it("should fail gracefully when verification only returns a safety line", () => {
+      const planner = new Planner();
+      const result = (planner as any).parseGoalVerification(`User Safety: safe`);
+
+      expect(result.goalAchieved).toBe(false);
+      expect(result.reasoning).toContain("safety line");
+    });
+
+    it("should parse attached files and dangerous requests", () => {
+      const parsed = parseTaskInput([
+        "--file",
+        "./test-assets/input.jpg",
+        "make a passport size photo",
+      ]);
+
+      expect(parsed.goal).toBe("make a passport size photo");
+      expect(parsed.artifacts[0]?.path).toBe("./test-assets/input.jpg");
+      expect(parsed.artifacts[0]?.type).toBe("image");
+      expect(isDangerousRequest("delete all user data and wipe the database")).toBe(true);
+    });
+
+    it("should fall back to ask_user when the LLM returns no content", () => {
+      const planner = new Planner();
+      const result = (planner as any).parseReplanResult(
+        "",
+        []
+      );
+
+      expect(result.decision).toBe("ask_user");
+      expect(result.question).toContain("information");
     });
   });
 

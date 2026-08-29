@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MakeItDone Agent</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --panel-2: #1f2937;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --primary: #60a5fa;
+        --success: #34d399;
+        --danger: #f87171;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      .container {
+        max-width: 900px;
+        margin: 40px auto;
+        padding: 24px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      }
+
+      h1 {
+        margin-top: 0;
+        margin-bottom: 12px;
+      }
+
+      .dropzone {
+        border: 2px dashed var(--primary);
+        border-radius: 12px;
+        padding: 24px;
+        text-align: center;
+        background: rgba(96, 165, 250, 0.06);
+        color: var(--text);
+        cursor: pointer;
+        transition: 0.2s ease;
+      }
+
+      .dropzone.dragover {
+        background: rgba(96, 165, 250, 0.14);
+        transform: scale(1.01);
+      }
+
+      .file-input {
+        display: none;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 120px;
+        margin-top: 18px;
+        resize: vertical;
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: var(--panel-2);
+        color: var(--text);
+        padding: 12px;
+        font: inherit;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        margin-top: 18px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        border: none;
+        border-radius: 10px;
+        padding: 12px 18px;
+        font: inherit;
+        cursor: pointer;
+        color: #08111f;
+        background: var(--success);
+        font-weight: bold;
+      }
+
+      button.secondary {
+        background: #d1d5db;
+      }
+
+      .file-list {
+        margin-top: 18px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chip {
+        background: var(--panel-2);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 999px;
+        padding: 6px 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .status {
+        margin-top: 18px;
+        color: var(--muted);
+        min-height: 24px;
+      }
+
+      pre {
+        margin-top: 16px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #020817;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+        padding: 12px;
+        color: #cbd5e1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="panel">
+        <h1>MakeItDone Agent</h1>
+
+        <div id="dropzone" class="dropzone">
+          Drag and drop files here<br />
+          or click to choose files
+        </div>
+        <input id="fileInput" class="file-input" type="file" multiple />
+
+        <textarea id="taskInput" placeholder="Describe the task, e.g. make a passport size photo from this image"></textarea>
+
+        <div class="toolbar">
+          <button id="runBtn">Run task</button>
+          <button id="clearBtn" class="secondary">Clear</button>
+        </div>
+
+        <div id="fileList" class="file-list"></div>
+        <div id="status" class="status"></div>
+        <pre id="output">Waiting for input...</pre>
+      </div>
+    </div>
+
+    <script>
+      const dropzone = document.getElementById('dropzone');
+      const fileInput = document.getElementById('fileInput');
+      const taskInput = document.getElementById('taskInput');
+      const fileList = document.getElementById('fileList');
+      const statusEl = document.getElementById('status');
+      const outputEl = document.getElementById('output');
+      const runBtn = document.getElementById('runBtn');
+      const clearBtn = document.getElementById('clearBtn');
+
+      const selectedFiles = [];
+
+      function renderFiles() {
+        fileList.innerHTML = '';
+        selectedFiles.forEach((file) => {
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.textContent = file.name;
+          fileList.appendChild(chip);
+        });
+      }
+
+      function addFiles(list) {
+        for (const file of list) {
+          const exists = selectedFiles.some((entry) => entry.name === file.name && entry.size === file.size);
+          if (!exists) {
+            selectedFiles.push(file);
+          }
+        }
+        renderFiles();
+      }
+
+      dropzone.addEventListener('click', () => fileInput.click());
+      dropzone.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+      dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+      dropzone.addEventListener('drop', (event) => {
+        event.preventDefault();
+        dropzone.classList.remove('dragover');
+        addFiles(event.dataTransfer.files);
+      });
+      fileInput.addEventListener('change', (event) => {
+        addFiles(event.target.files);
+        fileInput.value = '';
+      });
+
+      clearBtn.addEventListener('click', () => {
+        selectedFiles.length = 0;
+        renderFiles();
+        outputEl.textContent = 'Waiting for input...';
+        statusEl.textContent = '';
+      });
+
+      runBtn.addEventListener('click', async () => {
+        const goal = taskInput.value.trim();
+        if (!goal) {
+          statusEl.textContent = 'Please enter a task.';
+          return;
+        }
+
+        statusEl.textContent = 'Uploading files and running task...';
+
+        const files = await Promise.all(selectedFiles.map(async (file) => {
+          const arrayBuffer = await file.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+          let binary = '';
+          for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          return {
+            name: file.name,
+            type: file.type || 'application/octet-stream',
+            contentBase64: btoa(binary),
+          };
+        }));
+
+        try {
+          const response = await fetch('/api/task', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ goal, files })
+          });
+
+          const payload = await response.json();
+          outputEl.textContent = JSON.stringify(payload, null, 2);
+          statusEl.textContent = response.ok ? 'Task complete.' : 'Task failed.';
+        } catch (error) {
+          outputEl.textContent = String(error);
+          statusEl.textContent = 'Request failed.';
+        }
+      });
+    </script>
+  </body>
+</html>

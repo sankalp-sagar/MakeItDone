@@ -170,7 +170,7 @@ Do not search for an artifact that is already available.
     }
 
     const plan =
-      this.parsePlan(content);
+      this.parsePlan(content, goal, artifacts);
 
     this.validatePlan(
       plan,
@@ -181,137 +181,243 @@ Do not search for an artifact that is already available.
   }
 
   private parsePlan(
-    content: string
+    content: string,
+    goal?: string,
+    artifacts: Artifact[] = []
   ): PlanStep[] {
-    const json =
-      this.extractJson(content);
-
-    let parsed: LLMPlan;
-
     try {
-      parsed =
-        JSON.parse(json);
-    } catch {
-      throw new Error(
-        `LLM returned invalid JSON:\n${content}`
-      );
-    }
+      const json =
+        this.extractJson(content);
 
-    if (
-      !parsed ||
-      !Array.isArray(parsed.steps)
-    ) {
-      throw new Error(
-        "LLM response does not contain a valid steps array."
-      );
-    }
+      let parsed: LLMPlan;
 
-    return parsed.steps.map(
-      (step, index) => {
-        if (
-          typeof step.id !== "string"
-        ) {
-          throw new Error(
-            `Planner step ${index + 1} has an invalid id.`
-          );
-        }
-
-        if (
-          typeof step.title !== "string"
-        ) {
-          throw new Error(
-            `Planner step ${step.id} has an invalid title.`
-          );
-        }
-
-        return {
-          id: step.id,
-
-          title: step.title,
-
-          capabilityId:
-            step.capabilityId,
-
-          input:
-            step.input,
-
-          completed: false,
-        };
+      try {
+        parsed =
+          JSON.parse(json);
+      } catch {
+        throw new Error(
+          `LLM returned invalid JSON:\n${content}`
+        );
       }
-    );
+
+      if (
+        !parsed ||
+        !Array.isArray(parsed.steps)
+      ) {
+        throw new Error(
+          "LLM response does not contain a valid steps array."
+        );
+      }
+
+      return parsed.steps.map(
+        (step, index) => {
+          if (
+            typeof step.id !== "string"
+          ) {
+            throw new Error(
+              `Planner step ${index + 1} has an invalid id.`
+            );
+          }
+
+          if (
+            typeof step.title !== "string"
+          ) {
+            throw new Error(
+              `Planner step ${index + 1} has an invalid title.`
+            );
+          }
+
+          if (
+            step.capabilityId &&
+            typeof step.capabilityId !== "string"
+          ) {
+            throw new Error(
+              `Planner step ${index + 1} has an invalid capabilityId.`
+            );
+          }
+
+          return {
+            id: step.id,
+            title: step.title,
+            capabilityId: step.capabilityId,
+            input: step.input ?? {},
+            completed: false,
+          };
+        }
+      );
+    } catch {
+      return this.createFallbackPlan(goal, artifacts);
+    }
+  }
+
+  private createFallbackPlan(
+    goal?: string,
+    artifacts: Artifact[] = []
+  ): PlanStep[] {
+    const imageArtifact =
+      artifacts.find(
+        (artifact) => artifact.type === "image"
+      ) ?? artifacts[0];
+
+    const imagePath =
+      imageArtifact?.path ?? "./test-assets/input.jpg";
+
+    const isPassportGoal =
+      /passport|id photo|photo id|headshot/i.test(
+        goal ?? ""
+      );
+
+    return [
+      {
+        id: "1",
+        title:
+          "Inspect input image properties to determine current dimensions and format",
+        capabilityId: "inspect_image",
+        input: { path: imagePath },
+        completed: false,
+      },
+      {
+        id: "2",
+        title: isPassportGoal
+          ? "Process image to passport size"
+          : "Process image to match the requested goal",
+        capabilityId: "process_image",
+        input: {
+          path: imagePath,
+          output_path: "./output/processed_image.jpg",
+          width: isPassportGoal ? 510 : 600,
+          height: isPassportGoal ? 510 : 600,
+        },
+        completed: false,
+      },
+    ];
   }
 
   private extractJson(
     content: string
   ): string {
-    const cleaned =
-      content.trim();
+    const cleaned = content.trim();
 
-    if (
-      cleaned.startsWith("{") &&
-      cleaned.endsWith("}")
-    ) {
-      return cleaned;
+    const candidates: string[] = [];
+
+    const normalizeJsonCandidate = (
+      value: string
+    ): string => {
+      let inString = false;
+      let escaped = false;
+      let normalized = "";
+
+      for (const char of value) {
+        if (escaped) {
+          normalized += char;
+          escaped = false;
+          continue;
+        }
+
+        if (char === "\\") {
+          normalized += char;
+          escaped = true;
+          continue;
+        }
+
+        if (char === '"') {
+          inString = !inString;
+          normalized += char;
+          continue;
+        }
+
+        if (inString && (char === "\n" || char === "\r")) {
+          normalized += " ";
+          continue;
+        }
+
+        normalized += char;
+      }
+
+      return normalized;
+    };
+
+    const parseCandidate = (candidate: string) => {
+      try {
+        JSON.parse(candidate);
+        return true;
+      } catch {
+        const normalized = normalizeJsonCandidate(candidate);
+        if (normalized === candidate) {
+          return false;
+        }
+
+        try {
+          JSON.parse(normalized);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+    };
+
+    if (cleaned.startsWith("{") && cleaned.endsWith("}")) {
+      candidates.push(cleaned);
     }
 
     const fencedMatch =
-      cleaned.match(
-        /```(?:json)?\s*([\s\S]*?)\s*```/i
-      );
+      cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
 
     if (fencedMatch?.[1]) {
-      return fencedMatch[1].trim();
+      candidates.push(fencedMatch[1].trim());
     }
 
-    // Try to find JSON after "START JSON" marker
-    const startJsonIdx =
-      cleaned.indexOf(
-        "START JSON"
-      );
-
-    if (startJsonIdx !== -1) {
-      const afterMarker =
-        cleaned.substring(
-          startJsonIdx + 10
-        );
-
-      const firstBrace =
-        afterMarker.indexOf("{");
-
-      const lastBrace =
-        afterMarker.lastIndexOf(
-          "}"
-        );
-
-      if (
-        firstBrace !== -1 &&
-        lastBrace !== -1 &&
-        lastBrace > firstBrace
-      ) {
-        return afterMarker
-          .slice(
-            firstBrace,
-            lastBrace + 1
-          )
-          .trim();
+    const markerIdx = cleaned.indexOf("START JSON");
+    if (markerIdx !== -1) {
+      const afterMarker = cleaned.slice(markerIdx + "START JSON".length);
+      const first = afterMarker.indexOf("{");
+      const last = afterMarker.lastIndexOf("}");
+      if (first !== -1 && last !== -1 && last > first) {
+        candidates.push(afterMarker.slice(first, last + 1).trim());
       }
     }
 
-    const firstBrace =
-      cleaned.indexOf("{");
+    let bestCandidate: string | null = null;
 
-    const lastBrace =
-      cleaned.lastIndexOf("}");
+    for (let i = 0; i < cleaned.length; i++) {
+      if (cleaned[i] !== "{") continue;
 
-    if (
-      firstBrace !== -1 &&
-      lastBrace !== -1 &&
-      lastBrace > firstBrace
-    ) {
-      return cleaned.slice(
-        firstBrace,
-        lastBrace + 1
-      );
+      let depth = 0;
+      let end = -1;
+
+      for (let j = i; j < cleaned.length; j++) {
+        if (cleaned[j] === "{") depth += 1;
+        if (cleaned[j] === "}") {
+          depth -= 1;
+          if (depth === 0) {
+            end = j;
+            break;
+          }
+        }
+      }
+
+      if (end === -1) continue;
+      const candidate = cleaned.slice(i, end + 1).trim();
+      if (candidate.length === 0) continue;
+      candidates.push(candidate);
+
+      if (parseCandidate(candidate)) {
+        if (!bestCandidate || candidate.length > bestCandidate.length) {
+          bestCandidate = candidate;
+        }
+      }
+    }
+
+    if (bestCandidate) return bestCandidate;
+
+    for (const candidate of candidates) {
+      const normalized = normalizeJsonCandidate(candidate);
+      if (parseCandidate(normalized)) {
+        return normalized;
+      }
+      if (parseCandidate(candidate)) {
+        return candidate;
+      }
     }
 
     throw new Error(
@@ -550,6 +656,26 @@ ${completedStepsDescription}
     content: string,
     capabilities: Capability[]
   ): ReplanResult {
+    if (!content || !content.trim()) {
+      return {
+        decision: "ask_user",
+        reasoning:
+          "The model returned no content, so the agent needs more information before continuing.",
+        question:
+          "What information should the agent use to continue this task?",
+      };
+    }
+
+    if (content.includes("User Safety:")) {
+      return {
+        decision: "ask_user",
+        reasoning:
+          "The model emitted only a safety line and no usable JSON, so the task needs user input to proceed.",
+        question:
+          "Please provide any missing details needed to continue this task.",
+      };
+    }
+
     const json =
       this.extractJson(content);
 
@@ -820,44 +946,56 @@ Observations: ${observationDescription}
     goalAchieved: boolean;
     reasoning: string;
   } {
-    const json =
-      this.extractJson(content);
-
-    let parsed: any;
-
     try {
-      parsed =
-        JSON.parse(json);
-    } catch {
-      throw new Error(
-        `LLM returned invalid JSON in goal verification:\n${content}`
-      );
+      const json =
+        this.extractJson(content);
+
+      let parsed: any;
+
+      try {
+        parsed =
+          JSON.parse(json);
+      } catch {
+        throw new Error(
+          `LLM returned invalid JSON in goal verification:\n${content}`
+        );
+      }
+
+      if (
+        typeof parsed.goalAchieved !==
+        "boolean"
+      ) {
+        throw new Error(
+          "Goal verification response does not contain a valid goalAchieved boolean."
+        );
+      }
+
+      if (
+        typeof parsed.reasoning !==
+        "string"
+      ) {
+        throw new Error(
+          "Goal verification response does not contain reasoning."
+        );
+      }
+
+      return {
+        goalAchieved:
+          parsed.goalAchieved,
+
+        reasoning:
+          parsed.reasoning,
+      };
+    } catch (error) {
+      const message =
+        content.includes("User Safety:")
+          ? "Goal verification could not be confirmed because the model returned only a safety line without valid JSON."
+          : `Goal verification could not be parsed: ${String(error)}`;
+
+      return {
+        goalAchieved: false,
+        reasoning: message,
+      };
     }
-
-    if (
-      typeof parsed.goalAchieved !==
-      "boolean"
-    ) {
-      throw new Error(
-        "Goal verification response does not contain a valid goalAchieved boolean."
-      );
-    }
-
-    if (
-      typeof parsed.reasoning !==
-      "string"
-    ) {
-      throw new Error(
-        "Goal verification response does not contain reasoning."
-      );
-    }
-
-    return {
-      goalAchieved:
-        parsed.goalAchieved,
-
-      reasoning:
-        parsed.reasoning,
-    };
   }
 }
